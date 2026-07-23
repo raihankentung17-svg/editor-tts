@@ -462,6 +462,11 @@ export default function App() {
 
   const showError = (msg) => { setErrorMessage(msg); setTimeout(() => setErrorMessage(''), 3000); };
 
+  const updateActiveLayerTransform = (key, value) => {
+    if (activeLayer === 'canvas') return;
+    setTransforms(prev => ({ ...prev, [activeLayer]: { ...prev[activeLayer], [key]: value } }));
+  };
+
   const updateActiveLayerEffect = (key, value) => {
     if (activeLayer === 'canvas') return;
     setLayerEffects(prev => ({ ...prev, [activeLayer]: { ...prev[activeLayer], [key]: value } }));
@@ -477,6 +482,12 @@ export default function App() {
     else if (fx.specialEffect === 'cyberpunk') effectFilterStr = 'saturate(250%) contrast(150%) hue-rotate(90deg) drop-shadow(0 0 5px #0ff) ';
     else if (fx.specialEffect === 'sepia') effectFilterStr = 'sepia(100%) contrast(120%) saturate(150%) ';
     else if (fx.specialEffect === 'matrix') effectFilterStr = 'grayscale(100%) sepia(100%) hue-rotate(90deg) contrast(200%) brightness(80%) ';
+    
+    // --- PENAMBAHAN 3 EFEK BARU ---
+    else if (fx.specialEffect === 'acid-trip') effectFilterStr = 'saturate(400%) contrast(150%) hue-rotate(180deg) drop-shadow(0 0 10px #ff00ff) ';
+    else if (fx.specialEffect === 'thermal') effectFilterStr = 'invert(100%) saturate(500%) hue-rotate(90deg) contrast(150%) ';
+    else if (fx.specialEffect === 'noir') effectFilterStr = 'grayscale(100%) contrast(200%) brightness(90%) ';
+
     return `${effectFilterStr}brightness(${fx.brightness}%) contrast(${fx.contrast}%) saturate(${fx.saturation}%) blur(${fx.blur}px)`;
   };
 
@@ -973,6 +984,10 @@ export default function App() {
                   <option value="negative">Invert Negatif</option>
                   <option value="xray">X-Ray Scanner</option>
                   <option value="dither">Dither Kasar</option>
+                  {/* --- PENAMBAHAN 3 EFEK BARU --- */}
+                  <option value="acid-trip">Acid Trip (Psychedelic)</option>
+                  <option value="thermal">Thermal (Sensor Panas)</option>
+                  <option value="noir">Noir (B&W Kontras)</option>
                 </select>
               </div>
               <FilterSlider label="Kecerahan" value={layerEffects[activeLayer]?.brightness || 100} min={0} max={200} onChange={(val) => updateActiveLayerEffect('brightness', val)} />
