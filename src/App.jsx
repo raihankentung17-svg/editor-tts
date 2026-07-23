@@ -659,6 +659,7 @@ export default function App() {
               </div>
             )}
 
+            {/* --- HYBRID ABSOLUTE CELLS WITH PUZZLE MASKING --- */}
             <div className="absolute inset-0 pointer-events-none">
               {Object.entries(activeCells).map(([key, cellData]) => {
                 const layerId = cellData.layer;
@@ -704,12 +705,14 @@ export default function App() {
                       left: renderX, top: renderY, width: renderW, height: renderH,
                       border: !isPuzzle && isActive && borderWidth > 0 ? `${borderWidth}px solid rgba(255, 255, 255, 0.85)` : 'none',
                       mixBlendMode: activeBlendMode,
+                      // MASKING AJAIB
                       WebkitMaskImage: puzzleSvgUrl,
                       maskImage: puzzleSvgUrl,
                       WebkitMaskSize: '100% 100%',
                       maskSize: '100% 100%',
                       WebkitMaskRepeat: 'no-repeat',
                       maskRepeat: 'no-repeat',
+                      // SHADOW AJAIB MENGIKUTI BENTUK PUZZLE
                       filter: enableShadow ? (isPuzzle ? 'drop-shadow(0px 6px 15px rgba(0,0,0,0.9))' : undefined) : undefined,
                       boxShadow: enableShadow && !isPuzzle ? '0 4px 15px rgba(0,0,0,0.9)' : 'none'
                     }}
