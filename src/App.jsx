@@ -15,7 +15,6 @@ const PATTERNS = {
 };
 
 const generatePuzzlePath = (calcW, calcH, col, row, spanX, spanY, baseTabSize) => {
-  // Hash stabil untuk memastikan tonjolan saling mengunci (interlock) antar sel
   const getTabDir = (x, y, edge) => {
     let seedX = x; let seedY = y;
     let isVert = edge === 'vert'; 
@@ -23,18 +22,15 @@ const generatePuzzlePath = (calcW, calcH, col, row, spanX, spanY, baseTabSize) =
     return (hash - Math.floor(hash)) > 0.5 ? 1 : -1;
   };
 
-  // Kalkulus Vektor untuk menggambar satu segmen kurva puzzle yang melengkung sempurna
   const drawSegment = (x1, y1, x2, y2, tabDir, segLength) => {
     const dx = x2 - x1; const dy = y2 - y1;
     const ux = dx / segLength; const uy = dy / segLength;
-    const vx = -uy; const vy = ux; // Vektor Normal (Membelok 90 derajat keluar/ke dalam)
+    const vx = -uy; const vy = ux; 
     
-    const tSize = Math.min(baseTabSize, segLength * 0.35); // Tinggi Tonjolan proporsional
+    const tSize = Math.min(baseTabSize, segLength * 0.35); 
     
-    // Fungsi bantu untuk memetakan titik Bezier ke koordinat absolut
     const p = (l, n) => `${(x1 + ux * l + vx * n * tabDir).toFixed(2)},${(y1 + uy * l + vy * n * tabDir).toFixed(2)}`;
 
-    // Kurva Bezier Jigsaw Asli (Leher menyempit, Kepala bulat membesar)
     return `L ${p(segLength * 0.38, 0)} ` +
            `C ${p(segLength * 0.38, tSize * 0.2)} ${p(segLength * 0.32, tSize * 0.5)} ${p(segLength * 0.38, tSize * 0.8)} ` + 
            `C ${p(segLength * 0.42, tSize * 1.15)} ${p(segLength * 0.58, tSize * 1.15)} ${p(segLength * 0.62, tSize * 0.8)} ` + 
@@ -46,28 +42,24 @@ const generatePuzzlePath = (calcW, calcH, col, row, spanX, spanY, baseTabSize) =
   const cellW = calcW / spanX;
   const cellH = calcH / spanY;
 
-  // Menggambar Batas Atas (Loop sepanjang rentang sel horizontal)
   for(let i=0; i<spanX; i++) {
      const dir = -getTabDir(col + i, row, 'horiz');
      const startX = baseTabSize + i * cellW;
      path += drawSegment(startX, baseTabSize, startX + cellW, baseTabSize, dir, cellW);
   }
   
-  // Menggambar Batas Kanan
   for(let i=0; i<spanY; i++) {
      const dir = getTabDir(col + spanX, row + i, 'vert');
      const startY = baseTabSize + i * cellH;
      path += drawSegment(baseTabSize + calcW, startY, baseTabSize + calcW, startY + cellH, dir, cellH);
   }
 
-  // Menggambar Batas Bawah (Berbalik arah)
   for(let i=spanX-1; i>=0; i--) {
      const dir = getTabDir(col + i, row + spanY, 'horiz');
      const startX = baseTabSize + (i + 1) * cellW;
      path += drawSegment(startX, baseTabSize + calcH, startX - cellW, baseTabSize + calcH, dir, cellW);
   }
 
-  // Menggambar Batas Kiri (Berbalik arah)
   for(let i=spanY-1; i>=0; i--) {
      const dir = -getTabDir(col, row + i, 'vert');
      const startY = baseTabSize + (i + 1) * cellH;
@@ -80,7 +72,7 @@ const generatePuzzlePath = (calcW, calcH, col, row, spanX, spanY, baseTabSize) =
 export default function App() {
   const [images, setImages] = useState({ bg: null, fg1: null, fg2: null });
   const [layerModes, setLayerModes] = useState({ fg1: 'image', fg2: 'image' }); 
-  const [layerShapes, setLayerShapes] = useState({ fg1: 'puzzle', fg2: 'rect' }); // OPSI BARU
+  const [layerShapes, setLayerShapes] = useState({ fg1: 'puzzle', fg2: 'rect' });
   const [layerPatterns, setLayerPatterns] = useState({ fg1: 'checker-blue', fg2: 'stripes-black' });
   const [layerColors, setLayerColors] = useState({ fg1: '#0ea5e9', fg2: '#ec4899' }); 
 
@@ -100,8 +92,8 @@ export default function App() {
 
   const [transforms, setTransforms] = useState({
     bg: { x: 0, y: 0, scale: 1, rotate: 0 },
-    fg1: { x: 0, y: 0, scale: 1.5, rotate: 0 },
-    fg2: { x: 0, y: 0, scale: 1.5, rotate: 0 },
+    fg1: { x: 0, y: 0, scale: 1, rotate: 0 }, // PERBAIKAN 1: scale diubah jadi 1
+    fg2: { x: 0, y: 0, scale: 1, rotate: 0 }, // PERBAIKAN 1: scale diubah jadi 1
     canvas: { x: 0, y: 0, scale: 1 }
   });
   
@@ -573,7 +565,7 @@ export default function App() {
         onWheel={handleWheel}
       >
         <div className="absolute top-4 left-6 bg-neutral-900/90 px-3 py-2 rounded-lg border border-neutral-700 flex items-center gap-2 text-sm z-40 shadow-xl backdrop-blur-md">
-          <Layers size={16} className="text-teal-400" />
+          <Layers className="text-teal-400" size={16} />
           <span className="text-neutral-300 text-xs">Target Operasi:</span>
           <select 
             className="bg-neutral-800 text-white font-bold outline-none cursor-pointer rounded px-2 py-1 text-xs border border-neutral-600 focus:border-teal-500"
@@ -618,7 +610,7 @@ export default function App() {
           >
             {!images.bg && !images.fg1 && (
               <div className="absolute inset-0 flex flex-col items-center justify-center text-neutral-600 pointer-events-none">
-                <ImagePlus size={48} className="mb-3 opacity-30" />
+                <ImagePlus className="mb-3 opacity-30" size={48} />
                 <p className="text-sm">Unggah gambar di panel kanan</p>
               </div>
             )}
@@ -721,7 +713,7 @@ export default function App() {
                     >
                       {!isPatternMode && !isSolidMode && activeImage && (
                         <img 
-                          src={activeImage} alt="Grid Content" draggable="false" className="w-full h-full object-cover origin-center select-none"
+                          src={activeImage} alt="Grid Content" draggable="false" className="w-full h-full object-contain origin-center select-none" // PERBAIKAN 2: object-cover diubah jadi object-contain
                           style={{ transform: `translate(${activeTransform.x}px, ${activeTransform.y}px) scale(${activeTransform.scale}) rotate(${activeTransform.rotate || 0}deg)` }}
                         />
                       )}
@@ -789,14 +781,14 @@ export default function App() {
         {/* EXPORT */}
         <div className="bg-gradient-to-r from-teal-900/40 to-blue-900/40 p-4 rounded-xl border border-teal-900/50 shadow-inner">
           <h3 className="text-white font-bold mb-3 flex items-center gap-2 text-xs">
-            <Download size={14} className="text-teal-400" /> SIMPAN POSTER (HI-RES)
+            <Download className="text-teal-400" size={14} /> SIMPAN POSTER (HI-RES)
           </h3>
           <div className="grid grid-cols-2 gap-2">
             <button disabled={isExporting} onClick={() => exportImage('jpg')} className="py-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded text-xs font-semibold transition-colors disabled:opacity-50">
-              {isExporting ? <Loader2 size={14} className="animate-spin mx-auto" /> : 'JPG'}
+              {isExporting ? <Loader2 className="animate-spin mx-auto" size={14} /> : 'JPG'}
             </button>
             <button disabled={isExporting} onClick={() => exportImage('png')} className="py-2 bg-teal-600 hover:bg-teal-500 text-white rounded text-xs font-semibold transition-colors disabled:opacity-50 shadow-[0_0_10px_rgba(13,148,136,0.3)]">
-              {isExporting ? <Loader2 size={14} className="animate-spin mx-auto" /> : 'PNG'}
+              {isExporting ? <Loader2 className="animate-spin mx-auto" size={14} /> : 'PNG'}
             </button>
           </div>
         </div>
@@ -812,7 +804,7 @@ export default function App() {
               <button onClick={() => {
                 setActiveCells(p => { const n = {...p}; delete n[selectedCellKey]; return n; });
                 setSelectedCellKey(null);
-              }} className="text-red-400 hover:text-red-300 text-[10px]"><Trash2 size={14}/></button>
+              }} className="text-red-400 hover:text-red-300 text-[10px]"><Trash2 size={14} /></button>
             </div>
             
             <div className="mt-3">
@@ -833,7 +825,7 @@ export default function App() {
 
         {/* KANVAS & LATAR BELAKANG */}
         <div>
-          <h3 className="text-neutral-400 font-bold mb-3 text-[11px] tracking-wider flex items-center gap-1"><Square size={14}/> UKURAN KANVAS & LATAR</h3>
+          <h3 className="text-neutral-400 font-bold mb-3 text-[11px] tracking-wider flex items-center gap-1"><Square size={14} /> UKURAN KANVAS & LATAR</h3>
           <div className="grid grid-cols-2 gap-3 mb-3">
             <div className="flex flex-col gap-1">
               <label className="text-[10px] text-neutral-500">Lebar (W)</label>
@@ -875,7 +867,7 @@ export default function App() {
 
               {/* OPSI BENTUK PUZZLE BARU UNTUK FG1 */}
               <div className="flex justify-between items-center mb-3">
-                <label className="text-[9px] text-neutral-400 flex items-center gap-1"><Puzzle size={10}/> Bentuk Potongan</label>
+                <label className="text-[9px] text-neutral-400 flex items-center gap-1"><Puzzle size={10} /> Bentuk Potongan</label>
                 <select value={layerShapes.fg1} onChange={(e) => setLayerShapes(p => ({...p, fg1: e.target.value}))} className="bg-neutral-800 text-[9px] text-white rounded px-1 outline-none border border-neutral-700">
                   <option value="rect">Kotak (Persegi)</option>
                   <option value="puzzle">Jigsaw Puzzle</option>
@@ -890,7 +882,7 @@ export default function App() {
                 </select>
               ) : (
                 <div className="flex items-center justify-between bg-neutral-800 p-1.5 rounded">
-                   <span className="text-[10px] text-white flex items-center gap-1"><PaintBucket size={12}/> Pilih Warna Solid:</span>
+                   <span className="text-[10px] text-white flex items-center gap-1"><PaintBucket size={12} /> Pilih Warna Solid:</span>
                    <input type="color" value={layerColors.fg1} onChange={(e) => setLayerColors(p => ({...p, fg1: e.target.value}))} className="w-6 h-6 rounded cursor-pointer border-none p-0 bg-transparent" />
                 </div>
               )}
@@ -909,7 +901,7 @@ export default function App() {
 
               {/* OPSI BENTUK PUZZLE BARU UNTUK FG2 */}
               <div className="flex justify-between items-center mb-3">
-                <label className="text-[9px] text-neutral-400 flex items-center gap-1"><Puzzle size={10}/> Bentuk Potongan</label>
+                <label className="text-[9px] text-neutral-400 flex items-center gap-1"><Puzzle size={10} /> Bentuk Potongan</label>
                 <select value={layerShapes.fg2} onChange={(e) => setLayerShapes(p => ({...p, fg2: e.target.value}))} className="bg-neutral-800 text-[9px] text-white rounded px-1 outline-none border border-neutral-700">
                   <option value="rect">Kotak (Persegi)</option>
                   <option value="puzzle">Jigsaw Puzzle</option>
@@ -924,7 +916,7 @@ export default function App() {
                 </select>
               ) : (
                 <div className="flex items-center justify-between bg-neutral-800 p-1.5 rounded">
-                   <span className="text-[10px] text-white flex items-center gap-1"><PaintBucket size={12}/> Pilih Warna Solid:</span>
+                   <span className="text-[10px] text-white flex items-center gap-1"><PaintBucket size={12} /> Pilih Warna Solid:</span>
                    <input type="color" value={layerColors.fg2} onChange={(e) => setLayerColors(p => ({...p, fg2: e.target.value}))} className="w-6 h-6 rounded cursor-pointer border-none p-0 bg-transparent" />
                 </div>
               )}
@@ -936,12 +928,12 @@ export default function App() {
 
         {/* TYPOGRAPHY */}
         <div>
-          <h3 className="text-neutral-400 font-bold mb-3 text-[11px] tracking-wider flex items-center gap-1"><TypeIcon size={14}/> TIPOGRAFI & TEKS</h3>
+          <h3 className="text-neutral-400 font-bold mb-3 text-[11px] tracking-wider flex items-center gap-1"><TypeIcon size={14} /> TIPOGRAFI & TEKS</h3>
           {activeTextNode ? (
             <div className="bg-cyan-950/30 p-3 rounded-lg border border-cyan-900/50 space-y-3">
               <div className="flex justify-between items-center">
                 <span className="text-[10px] text-cyan-400 font-bold">EDIT TEKS TERPILIH</span>
-                <button onClick={deleteActiveText} className="text-red-400 hover:text-red-300 text-[10px]"><Trash2 size={12}/></button>
+                <button onClick={deleteActiveText} className="text-red-400 hover:text-red-300 text-[10px]"><Trash2 size={12} /></button>
               </div>
               <textarea value={activeTextNode.text} onChange={(e) => updateActiveText('text', e.target.value)} className="w-full bg-neutral-900 text-white text-xs p-2 rounded border border-neutral-700 outline-none focus:border-cyan-500 min-h-[60px]" placeholder="Ketik teks disini..." />
               <div className="grid grid-cols-2 gap-2">
@@ -973,7 +965,7 @@ export default function App() {
           </h3>
 
           <div className="mb-4 bg-cyan-950/20 p-3 rounded-lg border border-cyan-900/30">
-            <h4 className="text-[10px] text-cyan-400 font-bold mb-2 flex items-center gap-1"><PenTool size={12}/> ALAT KUAS (DRAW)</h4>
+            <h4 className="text-[10px] text-cyan-400 font-bold mb-2 flex items-center gap-1"><PenTool size={12} /> ALAT KUAS (DRAW)</h4>
             
             {brushTemplate ? (
               <div className="bg-cyan-900/40 p-2.5 rounded border border-cyan-500/50 flex justify-between items-center">
@@ -982,22 +974,22 @@ export default function App() {
                   <span className="text-xs text-white font-bold tracking-wider">{Math.round(brushTemplate.w)}px <span className="text-cyan-500 font-normal">x</span> {Math.round(brushTemplate.h)}px</span>
                 </div>
                 <button onClick={() => setBrushTemplate(null)} className="p-1.5 bg-red-950 text-red-400 rounded border border-red-900/50 hover:bg-red-900 hover:text-white transition-colors" title="Hapus Template">
-                  <Trash2 size={12}/>
+                  <Trash2 size={12} />
                 </button>
               </div>
             ) : (
               <>
                 <p className="text-[9px] text-neutral-400 mb-3 leading-relaxed">Pilih kotak mana saja lalu klik <b>"Salin Template"</b> untuk merekam bentuknya.</p>
-                <FilterSlider label="Lebar Kotak Standar (X)" value={brushSpan.x} min={1} max={15} onChange={(v) => setBrushSpan(p => ({...p, x: v}))} />
+                <FilterSlider label="Lebar Kotak Standar (X)" max={15} min={1} onChange={(v) => setBrushSpan(p => ({...p, x: v}))} value={brushSpan.x} />
                 <div className="h-2"></div>
-                <FilterSlider label="Tinggi Kotak Standar (Y)" value={brushSpan.y} min={1} max={15} onChange={(v) => setBrushSpan(p => ({...p, y: v}))} />
+                <FilterSlider label="Tinggi Kotak Standar (Y)" max={15} min={1} onChange={(v) => setBrushSpan(p => ({...p, y: v}))} value={brushSpan.y} />
               </>
             )}
           </div>
 
           <div className="space-y-4 mb-4">
-            <FilterSlider label="Celah Antar Kotak (Gap)" value={gridGap} min={0} max={40} onChange={setGridGap} />
-            <FilterSlider label="Ketebalan Garis Batas" value={borderWidth} min={0} max={5} onChange={setBorderWidth} />
+            <FilterSlider label="Celah Antar Kotak (Gap)" max={40} min={0} onChange={setGridGap} value={gridGap} />
+            <FilterSlider label="Ketebalan Garis Batas" max={5} min={0} onChange={setBorderWidth} value={borderWidth} />
             <div className="flex items-center justify-between bg-neutral-800/40 p-2 rounded border border-neutral-800/50">
               <span className="text-[11px] text-neutral-400">Bayangan Kotak (Shadow)</span>
               <button onClick={() => setEnableShadow(!enableShadow)} className={`w-9 h-5 rounded-full relative transition-colors duration-300 ${enableShadow ? 'bg-teal-500' : 'bg-neutral-700'}`}>
@@ -1048,7 +1040,7 @@ export default function App() {
             </div>
 
             <div className="mb-4 bg-neutral-800/30 p-3 rounded-lg border border-neutral-800">
-              <FilterSlider label="Rotasi Gambar (°)" value={transforms[activeLayer]?.rotate || 0} min={-180} max={180} onChange={(val) => updateActiveLayerTransform('rotate', val)} />
+              <FilterSlider label="Rotasi Gambar (°)" max={180} min={-180} onChange={(val) => setTransforms(prev => ({...prev, [activeLayer]: {...prev[activeLayer], rotate: val}}))} value={transforms[activeLayer]?.rotate || 0} />
             </div>
             <div className="space-y-4">
               <div className="flex flex-col gap-1">
@@ -1066,9 +1058,9 @@ export default function App() {
                   <option value="noir">Noir (B&W Kontras)</option>
                 </select>
               </div>
-              <FilterSlider label="Kecerahan" value={layerEffects[activeLayer]?.brightness || 100} min={0} max={200} onChange={(val) => updateActiveLayerEffect('brightness', val)} />
-              <FilterSlider label="Kontras" value={layerEffects[activeLayer]?.contrast || 100} min={0} max={200} onChange={(val) => updateActiveLayerEffect('contrast', val)} />
-              <FilterSlider label="Saturasi" value={layerEffects[activeLayer]?.saturation || 100} min={0} max={300} onChange={(val) => updateActiveLayerEffect('saturation', val)} />
+              <FilterSlider label="Kecerahan" max={200} min={0} onChange={(val) => updateActiveLayerEffect('brightness', val)} value={layerEffects[activeLayer]?.brightness || 100} />
+              <FilterSlider label="Kontras" max={200} min={0} onChange={(val) => updateActiveLayerEffect('contrast', val)} value={layerEffects[activeLayer]?.contrast || 100} />
+              <FilterSlider label="Saturasi" max={300} min={0} onChange={(val) => updateActiveLayerEffect('saturation', val)} value={layerEffects[activeLayer]?.saturation || 100} />
             </div>
           </div>
         ) : (
