@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   MousePointer2, Hand, ZoomIn, Shuffle, Layers, PenTool, Eraser, 
   Trash2, Download, ImagePlus, Loader2, Info, Ruler, Type, 
-  TypeIcon, Square, LayoutGrid, PaintBucket, Copy, Puzzle
+  TypeIcon, Square, LayoutGrid, PaintBucket, Copy, Puzzle,
+  Eye, EyeOff, Lock, Unlock, ChevronUp, ChevronDown, Move
 } from 'lucide-react';
 
 const PATTERNS = {
@@ -70,6 +71,13 @@ const generatePuzzlePath = (calcW, calcH, col, row, spanX, spanY, baseTabSize) =
 };
 
 export default function App() {
+  // --- DYNAMIC LAYER STATES ---
+  const [layers, setLayers] = useState([
+    { id: 'fg1', name: 'Grid Frame 1', visible: true, locked: false },
+    { id: 'fg2', name: 'Grid Frame 2', visible: true, locked: false }
+  ]);
+  const [layerOffsets, setLayerOffsets] = useState({ fg1: { x: 0, y: 0 }, fg2: { x: 0, y: 0 } });
+
   const [images, setImages] = useState({ bg: null, fg1: null, fg2: null });
   const [layerModes, setLayerModes] = useState({ fg1: 'image', fg2: 'image' }); 
   const [layerShapes, setLayerShapes] = useState({ fg1: 'puzzle', fg2: 'rect' });
@@ -92,8 +100,8 @@ export default function App() {
 
   const [transforms, setTransforms] = useState({
     bg: { x: 0, y: 0, scale: 1, rotate: 0 },
-    fg1: { x: 0, y: 0, scale: 1, rotate: 0 }, // PERBAIKAN 1: scale diubah jadi 1
-    fg2: { x: 0, y: 0, scale: 1, rotate: 0 }, // PERBAIKAN 1: scale diubah jadi 1
+    fg1: { x: 0, y: 0, scale: 1, rotate: 0 },
+    fg2: { x: 0, y: 0, scale: 1, rotate: 0 },
     canvas: { x: 0, y: 0, scale: 1 }
   });
   
@@ -129,12 +137,54 @@ export default function App() {
   const cellWidth = (canvasSize.w - ((gridCols - 1) * gridGap)) / gridCols;
   const cellHeight = (canvasSize.h - ((gridRows - 1) * gridGap)) / gridRows;
 
+  // --- LAYER LOGIC FUNCTIONS ---
+  const addNewLayer = () => {
+    const newId = `layer-${Date.now()}`;
+    setLayers(prev => [{ id: newId, name: `Layer ${prev.length + 1}`, visible: true, locked: false }, ...prev]);
+    setLayerModes(prev => ({ ...prev, [newId]: 'solid' }));
+    setLayerShapes(prev => ({ ...prev, [newId]: 'puzzle' }));
+    setLayerPatterns(prev => ({ ...prev, [newId]: 'solid-white' }));
+    setLayerColors(prev => ({ ...prev, [newId]: '#0ea5e9' }));
+    setTransforms(prev => ({ ...prev, [newId]: { x: 0, y: 0, scale: 1, rotate: 0 } }));
+    setLayerEffects(prev => ({ ...prev, [newId]: { ...initialEffects } }));
+    setLayerOffsets(prev => ({ ...prev, [newId]: { x: 0, y: 0 } }));
+    setActiveLayer(newId);
+  };
+
+  const deleteLayer = (id) => {
+    if (layers.length <= 1) return showError("Minimal 1 layer harus tersisa!");
+    setLayers(prev => prev.filter(l => l.id !== id));
+    if (activeLayer === id) setActiveLayer('canvas');
+    setActiveCells(prev => {
+      const next = { ...prev };
+      Object.keys(next).forEach(k => {
+        const cellLayerId = next[k].layer === 1 ? 'fg1' : next[k].layer === 2 ? 'fg2' : next[k].layer;
+        if (cellLayerId === id) delete next[k];
+      });
+      return next;
+    });
+  };
+
+  const toggleVisibility = (id) => setLayers(prev => prev.map(l => l.id === id ? { ...l, visible: !l.visible } : l));
+  const toggleLock = (id) => setLayers(prev => prev.map(l => l.id === id ? { ...l, locked: !l.locked } : l));
+  const moveLayerOrder = (id, direction) => {
+    setLayers(prev => {
+      const idx = prev.findIndex(l => l.id === id);
+      if (idx < 0) return prev;
+      const next = [...prev];
+      if (direction === 'up' && idx > 0) { [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]]; }
+      if (direction === 'down' && idx < prev.length - 1) { [next[idx + 1], next[idx]] = [next[idx], next[idx + 1]]; }
+      return next;
+    });
+  };
+
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.target.tagName.toLowerCase() === 'input' || e.target.tagName.toLowerCase() === 'textarea') return;
       const key = e.key.toLowerCase();
       if (key === 'v') setActiveTool('select');
       else if (key === 'h') setActiveTool('grab');
+      else if (key === 'm') setActiveTool('move');
       else if (key === 'z') setActiveTool('zoom');
       else if (key === 'p') setActiveTool('draw');
       else if (key === 'e') setActiveTool('erase');
@@ -167,7 +217,7 @@ export default function App() {
         if (Math.random() > 0.6) {
           const id = `${col}-${row}-${Date.now()}-${Math.random()}`;
           const isFg2 = Math.random() > 0.8;
-          newCells[id] = { layer: isFg2 ? 2 : 1, col, row, spanX: 1, spanY: 1 };
+          newCells[id] = { layer: isFg2 ? 'fg2' : 'fg1', col, row, spanX: 1, spanY: 1 };
         }
       }
     }
@@ -190,7 +240,8 @@ export default function App() {
         
         if (isValid) {
           const id = `smart-${col}-${row}-${Date.now()}`;
-          newCells[id] = { layer: activeLayer === 'fg1' ? 1 : 2, col, row, spanX: 1, spanY: 1 };
+          const targetLayer = activeLayer === 'canvas' || activeLayer === 'bg' ? 'fg1' : activeLayer;
+          newCells[id] = { layer: targetLayer, col, row, spanX: 1, spanY: 1 };
         }
       }
     }
@@ -262,7 +313,7 @@ export default function App() {
       return;
     }
 
-    if (activeTool === 'grab') {
+    if (activeTool === 'grab' || activeTool === 'move') {
       isDragging.current = true;
       lastMousePos.current = { x: e.clientX, y: e.clientY };
     } 
@@ -273,10 +324,12 @@ export default function App() {
       
       if (col >= 0 && col < gridCols && row >= 0 && row < gridRows) {
         const newKey = `draw-${Date.now()}-${Math.random()}`;
+        const targetLayer = (activeLayer === 'canvas' || activeLayer === 'bg') ? 'fg1' : activeLayer;
+        
         if (brushTemplate) {
-           setActiveCells(prev => ({ ...prev, [newKey]: { layer: activeLayer === 'fg1' ? 1 : 2, col, row, spanX: 1, spanY: 1, customW: brushTemplate.w, customH: brushTemplate.h } }));
+           setActiveCells(prev => ({ ...prev, [newKey]: { layer: targetLayer, col, row, spanX: 1, spanY: 1, customW: brushTemplate.w, customH: brushTemplate.h } }));
         } else {
-           setActiveCells(prev => ({ ...prev, [newKey]: { layer: activeLayer === 'fg1' ? 1 : 2, col, row, spanX: brushSpan.x, spanY: brushSpan.y } }));
+           setActiveCells(prev => ({ ...prev, [newKey]: { layer: targetLayer, col, row, spanX: brushSpan.x, spanY: brushSpan.y } }));
         }
       }
     }
@@ -359,15 +412,35 @@ export default function App() {
       return;
     }
 
-    if (isDragging.current && activeTool === 'grab') {
+    if (isDragging.current && (activeTool === 'grab' || activeTool === 'move')) {
       const deltaX = e.clientX - lastMousePos.current.x;
       const deltaY = e.clientY - lastMousePos.current.y;
       lastMousePos.current = { x: e.clientX, y: e.clientY };
-      const targetTransform = activeLayer === 'canvas' ? 'canvas' : activeLayer;
-      const adjustment = targetTransform !== 'canvas' ? (1 / transforms.canvas.scale) : 1;
-      setTransforms(prev => ({
-        ...prev, [targetTransform]: { ...prev[targetTransform], x: prev[targetTransform].x + (deltaX * adjustment), y: prev[targetTransform].y + (deltaY * adjustment) }
-      }));
+      const adjustment = 1 / transforms.canvas.scale;
+
+      const activeLayerConf = layers.find(l => l.id === activeLayer);
+      if (activeLayerConf?.locked) return; 
+
+      if (activeTool === 'move' && activeLayer !== 'canvas' && activeLayer !== 'bg') {
+        // MENGGESER CETAKAN PUZZLE (OFFSETS)
+        setLayerOffsets(prev => ({
+          ...prev, [activeLayer]: { 
+            x: (prev[activeLayer]?.x || 0) + (deltaX * adjustment), 
+            y: (prev[activeLayer]?.y || 0) + (deltaY * adjustment) 
+          }
+        }));
+      } else {
+        // MENGGESER GAMBAR DI DALAM PUZZLE (TRANSFORMS)
+        const targetTransform = activeLayer === 'canvas' ? 'canvas' : activeLayer;
+        setTransforms(prev => ({
+          ...prev, 
+          [targetTransform]: { 
+            ...prev[targetTransform] || {x:0,y:0,scale:1}, 
+            x: (prev[targetTransform]?.x || 0) + (deltaX * adjustment), 
+            y: (prev[targetTransform]?.y || 0) + (deltaY * adjustment) 
+          }
+        }));
+      }
       return;
     }
 
@@ -375,13 +448,14 @@ export default function App() {
       const col = Math.floor(mouseX / (cellWidth + gridGap));
       const row = Math.floor(mouseY / (cellHeight + gridGap));
       if (col >= 0 && col < gridCols && row >= 0 && row < gridRows) {
-        const isOverlap = Object.values(activeCells).some(c => c.col === col && c.row === row && c.layer === (activeLayer === 'fg1' ? 1 : 2) && c.customX === undefined);
+        const targetLayer = (activeLayer === 'canvas' || activeLayer === 'bg') ? 'fg1' : activeLayer;
+        const isOverlap = Object.values(activeCells).some(c => c.col === col && c.row === row && c.layer === targetLayer && c.customX === undefined);
         if (!isOverlap) {
           const newKey = `draw-${Date.now()}-${Math.random()}`;
           if (brushTemplate) {
-             setActiveCells(prev => ({ ...prev, [newKey]: { layer: activeLayer === 'fg1' ? 1 : 2, col, row, spanX: 1, spanY: 1, customW: brushTemplate.w, customH: brushTemplate.h } }));
+             setActiveCells(prev => ({ ...prev, [newKey]: { layer: targetLayer, col, row, spanX: 1, spanY: 1, customW: brushTemplate.w, customH: brushTemplate.h } }));
           } else {
-             setActiveCells(prev => ({ ...prev, [newKey]: { layer: activeLayer === 'fg1' ? 1 : 2, col, row, spanX: brushSpan.x, spanY: brushSpan.y } }));
+             setActiveCells(prev => ({ ...prev, [newKey]: { layer: targetLayer, col, row, spanX: brushSpan.x, spanY: brushSpan.y } }));
           }
         }
       }
@@ -422,7 +496,7 @@ export default function App() {
     const zoomFactor = -e.deltaY * 0.001;
     const targetTransform = activeLayer === 'canvas' ? 'canvas' : activeLayer;
     setTransforms(prev => ({
-      ...prev, [targetTransform]: { ...prev[targetTransform], scale: Math.max(0.1, prev[targetTransform].scale + zoomFactor) }
+      ...prev, [targetTransform]: { ...prev[targetTransform] || {scale:1}, scale: Math.max(0.1, (prev[targetTransform]?.scale || 1) + zoomFactor) }
     }));
   };
 
@@ -457,12 +531,7 @@ export default function App() {
     try {
       const { url, finalWidth, finalHeight } = await processAndCompress(file);
       if (layer === 'bg') setCanvasSize({ w: finalWidth, h: finalHeight });
-      setImages(prev => {
-        const newImages = { ...prev, [layer]: url };
-        if (layer === 'bg' && !prev.fg1) newImages.fg1 = url;
-        if (layer === 'bg' && !prev.fg2) newImages.fg2 = url;
-        return newImages;
-      });
+      setImages(prev => ({ ...prev, [layer]: url }));
     } catch (err) {
       showError("Gagal memproses gambar.");
     }
@@ -544,9 +613,10 @@ export default function App() {
 
   let workspaceCursor = 'default';
   if (activeTool === 'grab') workspaceCursor = isDragging.current ? 'grabbing' : 'grab';
+  else if (activeTool === 'move') workspaceCursor = isDragging.current ? 'grabbing' : 'move';
   else if (activeTool === 'zoom') workspaceCursor = 'zoom-in'; 
-  else if (activeTool === 'draw') workspaceCursor = (activeLayer === 'fg1' || activeLayer === 'fg2') ? 'crosshair' : 'not-allowed';
-  else if (activeTool === 'erase') workspaceCursor = (activeLayer === 'fg1' || activeLayer === 'fg2') ? 'cell' : 'not-allowed';
+  else if (activeTool === 'draw') workspaceCursor = (activeLayer === 'fg1' || activeLayer === 'fg2' || layers.find(l=>l.id === activeLayer)) ? 'crosshair' : 'not-allowed';
+  else if (activeTool === 'erase') workspaceCursor = (activeLayer === 'fg1' || activeLayer === 'fg2' || layers.find(l=>l.id === activeLayer)) ? 'cell' : 'not-allowed';
   else if (activeTool === 'text') workspaceCursor = 'text';
 
   const activeTextNode = texts.find(t => t.id === activeTextId);
@@ -557,10 +627,11 @@ export default function App() {
       
       {/* --- LEFT TOOLBAR --- */}
       <div className="w-16 bg-neutral-900 border-r border-neutral-800 flex flex-col items-center py-4 gap-3 z-30 shadow-[5px_0_15px_rgba(0,0,0,0.5)] flex-shrink-0">
-        <div className="text-[10px] font-bold text-teal-500 mb-2 tracking-widest text-center">TTS V7<br/><span className="text-[8px] text-neutral-500">JIGSAW</span></div>
+        <div className="text-[10px] font-bold text-teal-500 mb-2 tracking-widest text-center">TTS V8<br/><span className="text-[8px] text-neutral-500">PRO</span></div>
         
         <ToolButton icon={<MousePointer2 size={18} />} active={activeTool === 'select'} onClick={() => setActiveTool('select')} tooltip="Pilih / Transform (V)" />
         <ToolButton icon={<Hand size={18} />} active={activeTool === 'grab'} onClick={() => setActiveTool('grab')} tooltip="Geser Kanvas/Foto (H)" />
+        <ToolButton icon={<Move size={18} />} active={activeTool === 'move'} onClick={() => setActiveTool('move')} tooltip="Geser Cetakan Puzzle (M)" />
         <ToolButton icon={<ZoomIn size={18} />} active={activeTool === 'zoom'} onClick={() => setActiveTool('zoom')} tooltip="Zoom (Z / Scroll)" />
         <ToolButton icon={<Type size={18} />} active={activeTool === 'text'} onClick={() => setActiveTool('text')} tooltip="Tambah Teks (T)" />
         
@@ -596,8 +667,9 @@ export default function App() {
           >
             <option value="canvas">🔍 Tampilan Kanvas (Global)</option>
             <option value="bg">🖼️ Latar Belakang</option>
-            <option value="fg1">🔲 Grid Frame 1 (Depan)</option>
-            <option value="fg2">🔲 Grid Frame 2 (Tambahan)</option>
+            {layers.map(l => (
+               <option key={l.id} value={l.id}>🔲 {l.name}</option>
+            ))}
           </select>
         </div>
 
@@ -658,112 +730,111 @@ export default function App() {
               </div>
             )}
 
-            {/* --- TRUE HYBRID JIGSAW PUZZLE CELLS --- */}
+            {/* --- TRUE HYBRID JIGSAW PUZZLE CELLS (Z-INDEX LAYERED) --- */}
             <div className="absolute inset-0 pointer-events-none">
-              {Object.entries(activeCells).map(([key, cellData]) => {
-                const layerId = cellData.layer;
+              {layers.slice().reverse().map(layer => {
+                if (!layer.visible) return null;
                 
-                const lName = layerId === 1 ? 'fg1' : 'fg2';
-                const cellShape = layerShapes[lName] || 'rect';
-                const isPuzzle = cellShape === 'puzzle';
+                const layerCells = Object.entries(activeCells).filter(([k, v]) => {
+                   const cellLayerId = v.layer === 1 ? 'fg1' : v.layer === 2 ? 'fg2' : v.layer;
+                   return cellLayerId === layer.id;
+                });
 
-                const isPatternMode = layerModes[lName] === 'pattern';
-                const isSolidMode = layerModes[lName] === 'solid'; 
-                const activeImage = images[lName];
-                const activeTransform = transforms[lName];
-                const activeFilter = getFilterString(lName);
-                const activeBlendMode = layerEffects[lName]?.blendMode || 'normal'; 
-                const isSelected = selectedCellKey === key && activeTool === 'select' && !isExporting;
+                return layerCells.map(([key, cellData]) => {
+                  const lName = layer.id;
+                  const isActive = true;
+                  const isPatternMode = layerModes[lName] === 'pattern';
+                  const isSolidMode = layerModes[lName] === 'solid'; 
+                  const activeImage = images[lName];
+                  const activeTransform = transforms[lName] || { x: 0, y: 0, scale: 1, rotate: 0 };
+                  const activeFilter = getFilterString(lName);
+                  const activeBlendMode = layerEffects[lName]?.blendMode || 'normal'; 
+                  const isSelected = selectedCellKey === key && activeTool === 'select' && !isExporting;
+                  const cellShape = layerShapes[lName] || 'rect';
+                  const isPuzzle = cellShape === 'puzzle';
 
-                // Hitung Koordinat & Ukuran Inti (Sama dengan Kotak Biasa)
-                const posX = cellData.customX !== undefined ? cellData.customX : cellData.col * (cellWidth + gridGap);
-                const posY = cellData.customY !== undefined ? cellData.customY : cellData.row * (cellHeight + gridGap);
-                const calcW = Math.max(1, cellData.customW !== undefined ? cellData.customW : (cellData.spanX * cellWidth + (cellData.spanX - 1) * gridGap));
-                const calcH = Math.max(1, cellData.customH !== undefined ? cellData.customH : (cellData.spanY * cellHeight + (cellData.spanY - 1) * gridGap));
-                
-                // MENGAKOMODASI TONJOLAN PUZZLE (Batas Render Diperluas)
-                // Tab setinggi 25% dari lebar/tinggi SATU sel murni.
-                const baseTabSize = isPuzzle ? Math.min(cellWidth, cellHeight) * 0.25 : 0; 
-                
-                const renderX = posX - baseTabSize;
-                const renderY = posY - baseTabSize;
-                const renderW = calcW + baseTabSize * 2;
-                const renderH = calcH + baseTabSize * 2;
+                  // GLOBAL LAYER OFFSET (PATTERN MOVEMENT)
+                  const offsetX = layerOffsets[lName]?.x || 0;
+                  const offsetY = layerOffsets[lName]?.y || 0;
 
-                // Generator Jalur SVG
-                const puzzlePath = isPuzzle ? generatePuzzlePath(calcW, calcH, cellData.col, cellData.row, cellData.spanX, cellData.spanY, baseTabSize) : '';
-                const puzzleSvgUrl = isPuzzle ? `url("data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${renderW} ${renderH}'><path d='${puzzlePath}' fill='black'/></svg>`)}")` : 'none';
+                  const posX = (cellData.customX !== undefined ? cellData.customX : cellData.col * (cellWidth + gridGap)) + offsetX;
+                  const posY = (cellData.customY !== undefined ? cellData.customY : cellData.row * (cellHeight + gridGap)) + offsetY;
+                  const calcW = Math.max(1, cellData.customW !== undefined ? cellData.customW : (cellData.spanX * cellWidth + (cellData.spanX - 1) * gridGap));
+                  const calcH = Math.max(1, cellData.customH !== undefined ? cellData.customH : (cellData.spanY * cellHeight + (cellData.spanY - 1) * gridGap));
+                  
+                  const baseTabSize = isPuzzle ? Math.min(cellWidth, cellHeight) * 0.25 : 0; 
+                  
+                  const renderX = posX - baseTabSize;
+                  const renderY = posY - baseTabSize;
+                  const renderW = calcW + baseTabSize * 2;
+                  const renderH = calcH + baseTabSize * 2;
 
-                return (
-                  <div 
-                    key={key} 
-                    data-cell-key={key}
-                    className={`absolute box-border pointer-events-auto
-                      ${isSelected ? 'z-[100] overflow-visible cursor-move' : 'z-20 overflow-hidden cursor-pointer'}
-                    `}
-                    style={{ 
-                      left: renderX, top: renderY, width: renderW, height: renderH,
-                      // Hapus border CSS jika Jigsaw, karena kita pakai Outline SVG
-                      border: !isPuzzle && borderWidth > 0 ? `${borderWidth}px solid rgba(255, 255, 255, 0.85)` : 'none',
-                      mixBlendMode: activeBlendMode,
-                      // CSS MASK MAGIC! (Memotong kotak menjadi bentuk puzzle)
-                      WebkitMaskImage: puzzleSvgUrl, maskImage: puzzleSvgUrl,
-                      WebkitMaskSize: '100% 100%', maskSize: '100% 100%',
-                      WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
-                      // SHADOW AJAIB MENGIKUTI BENTUK MELENGKUNG PUZZLE
-                      filter: enableShadow ? (isPuzzle ? 'drop-shadow(0px 4px 10px rgba(0,0,0,0.8))' : undefined) : undefined,
-                      boxShadow: enableShadow && !isPuzzle ? '0 4px 15px rgba(0,0,0,0.9)' : 'none'
-                    }}
-                  >
-                    {/* SVG Outline yang Mengikuti Lekukan Puzzle */}
-                    {isPuzzle && borderWidth > 0 && (
-                      <svg className="absolute inset-0 pointer-events-none z-50" width="100%" height="100%" viewBox={`0 0 ${renderW} ${renderH}`}>
-                        <path d={puzzlePath} fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth={borderWidth * 2} />
-                      </svg>
-                    )}
+                  const puzzlePath = isPuzzle ? generatePuzzlePath(calcW, calcH, cellData.col, cellData.row, cellData.spanX, cellData.spanY, baseTabSize) : '';
+                  const puzzleSvgUrl = isPuzzle ? `url("data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${renderW} ${renderH}'><path d='${puzzlePath}' fill='black'/></svg>`)}")` : 'none';
 
-                    {/* Pembungkus Konten Dalam (Gambar/Warna) yang Sejajar dengan Kanvas Global */}
+                  // Menghilangkan offset dari masking gambar agar gambar bergerak BERSAMA dengan cetakan
+                  const originalRenderX = renderX - offsetX;
+                  const originalRenderY = renderY - offsetY;
+
+                  return (
                     <div 
-                      className="absolute pointer-events-none transition-opacity duration-200"
-                      style={{
-                        width: canvasSize.w, height: canvasSize.h,
-                        left: -renderX - (!isPuzzle ? borderWidth : 0), 
-                        top: -renderY - (!isPuzzle ? borderWidth : 0),
-                        filter: activeFilter,
-                        opacity: isSelected ? 0.75 : 1 
+                      key={key} 
+                      data-cell-key={key}
+                      className={`absolute box-border ${layer.locked ? 'pointer-events-none' : 'pointer-events-auto'}
+                        ${isSelected ? 'z-[100] overflow-visible cursor-move' : 'z-20 overflow-hidden cursor-pointer'}
+                      `}
+                      style={{ 
+                        left: renderX, top: renderY, width: renderW, height: renderH,
+                        border: !isPuzzle && borderWidth > 0 ? `${borderWidth}px solid rgba(255, 255, 255, 0.85)` : 'none',
+                        mixBlendMode: activeBlendMode,
+                        WebkitMaskImage: puzzleSvgUrl, maskImage: puzzleSvgUrl,
+                        WebkitMaskSize: '100% 100%', maskSize: '100% 100%',
+                        WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
+                        filter: enableShadow ? (isPuzzle ? 'drop-shadow(0px 4px 10px rgba(0,0,0,0.8))' : undefined) : undefined,
+                        boxShadow: enableShadow && !isPuzzle ? '0 4px 15px rgba(0,0,0,0.9)' : 'none'
                       }}
                     >
-                      {!isPatternMode && !isSolidMode && activeImage && (
-                        <img 
-                          src={activeImage} alt="Grid Content" draggable="false" className="w-full h-full object-contain origin-center select-none" // PERBAIKAN 2: object-cover diubah jadi object-contain
-                          style={{ transform: `translate(${activeTransform.x}px, ${activeTransform.y}px) scale(${activeTransform.scale}) rotate(${activeTransform.rotate || 0}deg)` }}
-                        />
+                      {isPuzzle && borderWidth > 0 && (
+                        <svg className="absolute inset-0 pointer-events-none z-50" width="100%" height="100%" viewBox={`0 0 ${renderW} ${renderH}`}>
+                          <path d={puzzlePath} fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth={borderWidth * 2} />
+                        </svg>
                       )}
-                      {isPatternMode && (
-                        <div 
-                          className="w-full h-full"
-                          style={{ ...PATTERNS[layerPatterns[lName]], transform: `translate(${activeTransform.x}px, ${activeTransform.y}px) scale(${activeTransform.scale}) rotate(${activeTransform.rotate || 0}deg)` }}
-                        />
-                      )}
-                      {isSolidMode && (
-                        <div className="w-full h-full" style={{ backgroundColor: layerColors[lName] }} />
+
+                      <div 
+                        className="absolute pointer-events-none transition-opacity duration-200"
+                        style={{
+                          width: canvasSize.w, height: canvasSize.h,
+                          left: -originalRenderX - (!isPuzzle ? borderWidth : 0), 
+                          top: -originalRenderY - (!isPuzzle ? borderWidth : 0),
+                          filter: activeFilter,
+                          opacity: isSelected ? 0.75 : 1 
+                        }}
+                      >
+                        {!isPatternMode && !isSolidMode && activeImage && (
+                          <img 
+                            src={activeImage} alt="Grid Content" draggable="false" className="w-full h-full object-contain origin-center select-none"
+                            style={{ transform: `translate(${activeTransform.x}px, ${activeTransform.y}px) scale(${activeTransform.scale}) rotate(${activeTransform.rotate || 0}deg)` }}
+                          />
+                        )}
+                        {isPatternMode && (
+                          <div className="w-full h-full" style={{ ...PATTERNS[layerPatterns[lName]], transform: `translate(${activeTransform.x}px, ${activeTransform.y}px) scale(${activeTransform.scale}) rotate(${activeTransform.rotate || 0}deg)` }} />
+                        )}
+                        {isSolidMode && (
+                          <div className="w-full h-full" style={{ backgroundColor: layerColors[lName] }} />
+                        )}
+                      </div>
+
+                      {isSelected && (
+                        <div className="absolute border-[2px] border-cyan-400 z-50 pointer-events-none shadow-[0_0_15px_rgba(0,255,255,0.7)]" style={{ left: baseTabSize, top: baseTabSize, width: calcW, height: calcH }}>
+                          <div data-resize-handle={`${key}|nw`} className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border-[1.5px] border-cyan-500 cursor-nwse-resize pointer-events-auto hover:bg-cyan-200 transition-all shadow-sm" />
+                          <div data-resize-handle={`${key}|ne`} className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border-[1.5px] border-cyan-500 cursor-nesw-resize pointer-events-auto hover:bg-cyan-200 transition-all shadow-sm" />
+                          <div data-resize-handle={`${key}|sw`} className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-white border-[1.5px] border-cyan-500 cursor-nesw-resize pointer-events-auto hover:bg-cyan-200 transition-all shadow-sm" />
+                          <div data-resize-handle={`${key}|se`} className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border-[1.5px] border-cyan-500 cursor-nwse-resize pointer-events-auto hover:bg-cyan-200 transition-all shadow-sm" />
+                        </div>
                       )}
                     </div>
-
-                    {/* UI Resize Handle (Bounding Box) */}
-                    {isSelected && (
-                      <div 
-                        className="absolute border-[2px] border-cyan-400 z-50 pointer-events-none shadow-[0_0_15px_rgba(0,255,255,0.7)]"
-                        style={{ left: baseTabSize, top: baseTabSize, width: calcW, height: calcH }}
-                      >
-                        <div data-resize-handle={`${key}|nw`} className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border-[1.5px] border-cyan-500 cursor-nwse-resize pointer-events-auto hover:bg-cyan-200 transition-all shadow-sm" />
-                        <div data-resize-handle={`${key}|ne`} className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border-[1.5px] border-cyan-500 cursor-nesw-resize pointer-events-auto hover:bg-cyan-200 transition-all shadow-sm" />
-                        <div data-resize-handle={`${key}|sw`} className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-white border-[1.5px] border-cyan-500 cursor-nesw-resize pointer-events-auto hover:bg-cyan-200 transition-all shadow-sm" />
-                        <div data-resize-handle={`${key}|se`} className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border-[1.5px] border-cyan-500 cursor-nwse-resize pointer-events-auto hover:bg-cyan-200 transition-all shadow-sm" />
-                      </div>
-                    )}
-                  </div>
-                );
+                  );
+                });
               })}
             </div>
 
@@ -815,35 +886,34 @@ export default function App() {
           </div>
         </div>
 
-        {/* MENU KLONING SIMPLE & BERSIH */}
-        {activeSelectedCell && (
-          <div className="bg-teal-950/30 p-3 rounded-lg border border-teal-500/50 shadow-[0_0_10px_rgba(45,212,191,0.1)]">
-            <div className="flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 bg-teal-400 rounded-full animate-pulse"></span>
-                <span className="text-teal-400 font-bold text-[11px] tracking-wider">KOTAK TERPILIH</span>
-              </div>
-              <button onClick={() => {
-                setActiveCells(p => { const n = {...p}; delete n[selectedCellKey]; return n; });
-                setSelectedCellKey(null);
-              }} className="text-red-400 hover:text-red-300 text-[10px]"><Trash2 size={14} /></button>
-            </div>
-            
-            <div className="mt-3">
-              <button 
-                onClick={() => {
-                  const w = activeSelectedCell.customW !== undefined ? activeSelectedCell.customW : (activeSelectedCell.spanX * cellWidth + (activeSelectedCell.spanX - 1) * gridGap);
-                  const h = activeSelectedCell.customH !== undefined ? activeSelectedCell.customH : (activeSelectedCell.spanY * cellHeight + (activeSelectedCell.spanY - 1) * gridGap);
-                  setBrushTemplate({w, h});
-                  setActiveTool('draw'); 
-                }} 
-                className="w-full py-2 bg-teal-600 hover:bg-teal-500 text-white rounded text-xs font-bold flex justify-center items-center gap-2 transition-colors shadow-sm"
-              >
-                <Copy size={14} /> Salin Jadikan Template Kuas
-              </button>
-            </div>
+        {/* --- DYNAMIC LAYER PANEL (PHOTOSHOP STYLE) --- */}
+        <div className="bg-neutral-950 p-3 rounded-xl border border-neutral-800 shadow-inner">
+          <div className="flex justify-between items-center mb-3">
+             <h3 className="text-teal-400 font-bold text-[11px] tracking-wider uppercase">LAYER PANEL</h3>
+             <button onClick={addNewLayer} className="text-[10px] bg-neutral-800 hover:bg-neutral-700 px-2 py-1 rounded text-white font-bold transition border border-neutral-700">+ NEW</button>
           </div>
-        )}
+          
+          <div className="flex flex-col gap-1.5 max-h-[250px] overflow-y-auto custom-scrollbar pr-1">
+            {layers.map((layer, index) => (
+               <div key={layer.id} className={`flex items-center justify-between p-2 rounded border transition-colors ${activeLayer === layer.id ? 'bg-neutral-800 border-teal-500' : 'bg-neutral-950 border-neutral-800 hover:border-neutral-600'}`}>
+                 <div className="flex items-center gap-2">
+                    <button onClick={() => toggleVisibility(layer.id)} className={`${layer.visible ? 'text-teal-400' : 'text-neutral-600'} hover:text-white transition`}>
+                      {layer.visible ? <Eye size={14}/> : <EyeOff size={14}/>}
+                    </button>
+                    <button onClick={() => toggleLock(layer.id)} className={`${layer.locked ? 'text-red-400' : 'text-neutral-600'} hover:text-white transition`}>
+                      {layer.locked ? <Lock size={14}/> : <Unlock size={14}/>}
+                    </button>
+                    <span onClick={() => setActiveLayer(layer.id)} className={`text-[11px] cursor-pointer select-none truncate w-24 ${activeLayer === layer.id ? 'text-white font-bold' : 'text-neutral-500'}`}>{layer.name}</span>
+                 </div>
+                 <div className="flex items-center gap-1">
+                    <button onClick={() => moveLayerOrder(layer.id, 'up')} disabled={index === 0} className="text-neutral-500 hover:text-white disabled:opacity-20"><ChevronUp size={14}/></button>
+                    <button onClick={() => moveLayerOrder(layer.id, 'down')} disabled={index === layers.length - 1} className="text-neutral-500 hover:text-white disabled:opacity-20"><ChevronDown size={14}/></button>
+                    <button onClick={() => deleteLayer(layer.id)} className="text-red-900 hover:text-red-500 ml-1"><Trash2 size={12}/></button>
+                 </div>
+               </div>
+            ))}
+          </div>
+        </div>
 
         {/* KANVAS & LATAR BELAKANG */}
         <div>
@@ -866,85 +936,51 @@ export default function App() {
 
         <div className="h-px bg-neutral-800"></div>
 
-        {/* UPLOADS, PATTERNS & PUZZLE SHAPE SELECTORS */}
-        <div>
-          <h3 className="text-neutral-400 font-bold mb-3 text-[11px] tracking-wider">3 LAPISAN (LAYER)</h3>
-          <div className="space-y-3">
-            {/* BG */}
-            <div className="bg-neutral-950 p-2 rounded border border-neutral-800 border-l-2 border-l-white">
-              <label className="text-[10px] text-white block mb-1">Layer Dasar (Latar)</label>
-              <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, 'bg')} className="w-full text-[10px] text-neutral-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-neutral-800 file:text-white cursor-pointer" />
-            </div>
+        {/* PENGATURAN ISI LAYER DINAMIS (GAMBAR/POLA/WARNA) */}
+        {activeLayer !== 'canvas' && (
+          <div>
+            <h3 className="text-teal-400 font-bold mb-3 text-[11px] tracking-wider uppercase">KONTEN LAYER {activeLayer === 'bg' ? 'LATAR BELAKANG' : activeLayer.toUpperCase()}</h3>
             
-            {/* FG1 */}
-            <div className="bg-neutral-950 p-2 rounded border border-neutral-800 border-l-2 border-l-teal-500">
-              <div className="flex justify-between items-center mb-2">
-                <label className="text-[10px] font-bold text-teal-500">Grid Frame 1</label>
-                <select value={layerModes.fg1} onChange={(e) => setLayerModes(p => ({...p, fg1: e.target.value}))} className="bg-neutral-800 text-[9px] text-white rounded px-1 outline-none border border-neutral-700">
-                  <option value="image">Gunakan Foto</option>
-                  <option value="pattern">Gunakan Pola</option>
-                  <option value="solid">Warna Solid</option>
-                </select>
+            {activeLayer === 'bg' ? (
+              <div className="bg-neutral-950 p-2 rounded border border-neutral-800 border-l-2 border-l-white">
+                <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, 'bg')} className="w-full text-[10px] text-neutral-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-neutral-800 file:text-white cursor-pointer" />
               </div>
-
-              {/* OPSI BENTUK PUZZLE BARU UNTUK FG1 */}
-              <div className="flex justify-between items-center mb-3">
-                <label className="text-[9px] text-neutral-400 flex items-center gap-1"><Puzzle size={10} /> Bentuk Potongan</label>
-                <select value={layerShapes.fg1} onChange={(e) => setLayerShapes(p => ({...p, fg1: e.target.value}))} className="bg-neutral-800 text-[9px] text-white rounded px-1 outline-none border border-neutral-700">
-                  <option value="rect">Kotak (Persegi)</option>
-                  <option value="puzzle">Jigsaw Puzzle</option>
-                </select>
-              </div>
-
-              {layerModes.fg1 === 'image' ? (
-                <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, 'fg1')} className="w-full text-[10px] text-neutral-400 cursor-pointer file:bg-neutral-800 file:text-teal-400 file:border-0 file:rounded file:px-2 file:mr-2" />
-              ) : layerModes.fg1 === 'pattern' ? (
-                <select value={layerPatterns.fg1} onChange={(e) => setLayerPatterns(p => ({...p, fg1: e.target.value}))} className="w-full bg-neutral-800 text-xs text-white p-1 rounded outline-none">
-                  <option value="checker-blue">Catur Biru Muda</option><option value="checker-black">Catur Hitam Putih</option><option value="stripes-black">Garis Diagonal</option><option value="dots-red">Titik Merah (Halftone)</option><option value="solid-white">Blok Putih Solid</option>
-                </select>
-              ) : (
-                <div className="flex items-center justify-between bg-neutral-800 p-1.5 rounded">
-                   <span className="text-[10px] text-white flex items-center gap-1"><PaintBucket size={12} /> Pilih Warna Solid:</span>
-                   <input type="color" value={layerColors.fg1} onChange={(e) => setLayerColors(p => ({...p, fg1: e.target.value}))} className="w-6 h-6 rounded cursor-pointer border-none p-0 bg-transparent" />
+            ) : (
+              <div className="bg-neutral-950 p-2 rounded border border-neutral-800 border-l-2 border-l-teal-500">
+                 {/* Shape selector */}
+                 <div className="flex justify-between items-center mb-3">
+                  <label className="text-[9px] text-neutral-400 flex items-center gap-1"><Puzzle size={10} /> Bentuk Potongan</label>
+                  <select value={layerShapes[activeLayer] || 'rect'} onChange={(e) => setLayerShapes(p => ({...p, [activeLayer]: e.target.value}))} className="bg-neutral-800 text-[9px] text-white rounded px-1 outline-none border border-neutral-700">
+                    <option value="rect">Kotak (Persegi)</option>
+                    <option value="puzzle">Jigsaw Puzzle</option>
+                  </select>
                 </div>
-              )}
-            </div>
-
-            {/* FG2 */}
-            <div className="bg-neutral-950 p-2 rounded border border-neutral-800 border-l-2 border-l-amber-500">
-              <div className="flex justify-between items-center mb-2">
-                <label className="text-[10px] font-bold text-amber-500">Grid Frame 2</label>
-                <select value={layerModes.fg2} onChange={(e) => setLayerModes(p => ({...p, fg2: e.target.value}))} className="bg-neutral-800 text-[9px] text-white rounded px-1 outline-none border border-neutral-700">
-                  <option value="image">Gunakan Foto</option>
-                  <option value="pattern">Gunakan Pola</option>
-                  <option value="solid">Warna Solid</option>
-                </select>
-              </div>
-
-              {/* OPSI BENTUK PUZZLE BARU UNTUK FG2 */}
-              <div className="flex justify-between items-center mb-3">
-                <label className="text-[9px] text-neutral-400 flex items-center gap-1"><Puzzle size={10} /> Bentuk Potongan</label>
-                <select value={layerShapes.fg2} onChange={(e) => setLayerShapes(p => ({...p, fg2: e.target.value}))} className="bg-neutral-800 text-[9px] text-white rounded px-1 outline-none border border-neutral-700">
-                  <option value="rect">Kotak (Persegi)</option>
-                  <option value="puzzle">Jigsaw Puzzle</option>
-                </select>
-              </div>
-
-              {layerModes.fg2 === 'image' ? (
-                <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, 'fg2')} className="w-full text-[10px] text-neutral-400 cursor-pointer file:bg-neutral-800 file:text-amber-400 file:border-0 file:rounded file:px-2 file:mr-2" />
-              ) : layerModes.fg2 === 'pattern' ? (
-                <select value={layerPatterns.fg2} onChange={(e) => setLayerPatterns(p => ({...p, fg2: e.target.value}))} className="w-full bg-neutral-800 text-xs text-white p-1 rounded outline-none">
-                  <option value="checker-blue">Catur Biru Muda</option><option value="checker-black">Catur Hitam Putih</option><option value="stripes-black">Garis Diagonal</option><option value="dots-red">Titik Merah (Halftone)</option><option value="solid-white">Blok Putih Solid</option>
-                </select>
-              ) : (
-                <div className="flex items-center justify-between bg-neutral-800 p-1.5 rounded">
-                   <span className="text-[10px] text-white flex items-center gap-1"><PaintBucket size={12} /> Pilih Warna Solid:</span>
-                   <input type="color" value={layerColors.fg2} onChange={(e) => setLayerColors(p => ({...p, fg2: e.target.value}))} className="w-6 h-6 rounded cursor-pointer border-none p-0 bg-transparent" />
+                {/* Mode selector */}
+                 <div className="flex justify-between items-center mb-2">
+                  <label className="text-[10px] font-bold text-teal-500">Isi Layer</label>
+                  <select value={layerModes[activeLayer] || 'image'} onChange={(e) => setLayerModes(p => ({...p, [activeLayer]: e.target.value}))} className="bg-neutral-800 text-[9px] text-white rounded px-1 outline-none border border-neutral-700">
+                    <option value="image">Gunakan Foto</option>
+                    <option value="pattern">Gunakan Pola</option>
+                    <option value="solid">Warna Solid</option>
+                  </select>
                 </div>
-              )}
-            </div>
+                {/* Inputs based on Mode */}
+                {layerModes[activeLayer] === 'image' || !layerModes[activeLayer] ? (
+                  <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, activeLayer)} className="w-full text-[10px] text-neutral-400 cursor-pointer file:bg-neutral-800 file:text-teal-400 file:border-0 file:rounded file:px-2 file:mr-2" />
+                ) : layerModes[activeLayer] === 'pattern' ? (
+                  <select value={layerPatterns[activeLayer] || 'checker-blue'} onChange={(e) => setLayerPatterns(p => ({...p, [activeLayer]: e.target.value}))} className="w-full bg-neutral-800 text-xs text-white p-1 rounded outline-none">
+                    <option value="checker-blue">Catur Biru Muda</option><option value="checker-black">Catur Hitam Putih</option><option value="stripes-black">Garis Diagonal</option><option value="dots-red">Titik Merah (Halftone)</option><option value="solid-white">Blok Putih Solid</option>
+                  </select>
+                ) : (
+                  <div className="flex items-center justify-between bg-neutral-800 p-1.5 rounded">
+                     <span className="text-[10px] text-white flex items-center gap-1"><PaintBucket size={12} /> Pilih Warna Solid:</span>
+                     <input type="color" value={layerColors[activeLayer] || '#0ea5e9'} onChange={(e) => setLayerColors(p => ({...p, [activeLayer]: e.target.value}))} className="w-6 h-6 rounded cursor-pointer border-none p-0 bg-transparent" />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-        </div>
+        )}
 
         <div className="h-px bg-neutral-800"></div>
 
@@ -985,6 +1021,36 @@ export default function App() {
           <h3 className="text-neutral-400 font-bold mb-3 text-[11px] tracking-wider flex justify-between items-center">
             PENGATURAN GRID & KUAS
           </h3>
+
+          {/* MENU KLONING SIMPLE & BERSIH (Pindah ke Sini) */}
+          {activeSelectedCell && (
+            <div className="bg-teal-950/30 p-3 mb-4 rounded-lg border border-teal-500/50 shadow-[0_0_10px_rgba(45,212,191,0.1)]">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 bg-teal-400 rounded-full animate-pulse"></span>
+                  <span className="text-teal-400 font-bold text-[11px] tracking-wider">KOTAK TERPILIH</span>
+                </div>
+                <button onClick={() => {
+                  setActiveCells(p => { const n = {...p}; delete n[selectedCellKey]; return n; });
+                  setSelectedCellKey(null);
+                }} className="text-red-400 hover:text-red-300 text-[10px]"><Trash2 size={14} /></button>
+              </div>
+              
+              <div className="mt-3">
+                <button 
+                  onClick={() => {
+                    const w = activeSelectedCell.customW !== undefined ? activeSelectedCell.customW : (activeSelectedCell.spanX * cellWidth + (activeSelectedCell.spanX - 1) * gridGap);
+                    const h = activeSelectedCell.customH !== undefined ? activeSelectedCell.customH : (activeSelectedCell.spanY * cellHeight + (activeSelectedCell.spanY - 1) * gridGap);
+                    setBrushTemplate({w, h});
+                    setActiveTool('draw'); 
+                  }} 
+                  className="w-full py-2 bg-teal-600 hover:bg-teal-500 text-white rounded text-xs font-bold flex justify-center items-center gap-2 transition-colors shadow-sm"
+                >
+                  <Copy size={14} /> Salin Jadikan Template Kuas
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="mb-4 bg-cyan-950/20 p-3 rounded-lg border border-cyan-900/30">
             <h4 className="text-[10px] text-cyan-400 font-bold mb-2 flex items-center gap-1"><PenTool size={12} /> ALAT KUAS (DRAW)</h4>
@@ -1050,11 +1116,11 @@ export default function App() {
 
         <div className="h-px bg-neutral-800"></div>
 
-        {/* LAYER-SPECIFIC CONTROLS DENGAN 3 EFEK BARU */}
+        {/* EFEK & FILTER (Dinamic by Layer) */}
         {activeLayer !== 'canvas' ? (
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <h3 className="text-teal-400 font-bold text-[11px] tracking-wider uppercase">PENGATURAN {activeLayer.toUpperCase()}</h3>
+              <h3 className="text-teal-400 font-bold text-[11px] tracking-wider uppercase">EFEK VISUAL {activeLayer === 'bg' ? 'LATAR BELAKANG' : activeLayer}</h3>
             </div>
 
             <div className="flex flex-col gap-1 mb-4">
