@@ -175,7 +175,27 @@ export default function App() {
   };
   
   useEffect(() => { generateRandomGrid(); }, []);
+  
   const clearGrid = () => { setActiveCells({}); setSelectedCellKey(null); setBrushTemplate(null); };
+
+  const applySmartLayout = (type) => {
+    const newCells = {};
+    for (let row = 0; row < gridRows; row++) {
+      for (let col = 0; col < gridCols; col++) {
+        let isValid = false;
+        if (type === 'checker') isValid = (col + row) % 2 === 0;
+        else if (type === 'border') isValid = (col === 0 || col === gridCols - 1 || row === 0 || row === gridRows - 1);
+        else if (type === 'center') isValid = (col >= Math.floor(gridCols*0.2) && col <= Math.floor(gridCols*0.8) && row >= Math.floor(gridRows*0.2) && row <= Math.floor(gridRows*0.8));
+        else if (type === 'diagonal') isValid = (col === row || col === gridCols - row - 1);
+        
+        if (isValid) {
+          const id = `smart-${col}-${row}-${Date.now()}`;
+          newCells[id] = { layer: activeLayer === 'fg1' ? 1 : 2, col, row, spanX: 1, spanY: 1 };
+        }
+      }
+    }
+    setActiveCells(newCells);
+  };
 
   const getWorkspaceCoords = (clientX, clientY) => {
     if (!workspaceRef.current) return { x: 0, y: 0 };
@@ -489,6 +509,7 @@ export default function App() {
   };
 
   const showError = (msg) => { setErrorMessage(msg); setTimeout(() => setErrorMessage(''), 3000); };
+  
   const updateActiveLayerEffect = (key, value) => {
     if (activeLayer === 'canvas') return;
     setLayerEffects(prev => ({ ...prev, [activeLayer]: { ...prev[activeLayer], [key]: value } }));
@@ -514,6 +535,7 @@ export default function App() {
     if (!activeTextId) return;
     setTexts(prev => prev.map(t => t.id === activeTextId ? { ...t, [key]: value } : t));
   };
+  
   const deleteActiveText = () => {
     if (!activeTextId) return;
     setTexts(prev => prev.filter(t => t.id !== activeTextId));
@@ -1008,9 +1030,21 @@ export default function App() {
               <input type="number" min="2" max="250" value={gridRows} onChange={(e) => setGridRows(Number(e.target.value))} className="bg-neutral-950 text-white text-xs rounded p-2 outline-none border border-neutral-800" />
             </div>
           </div>
-          <div className="flex gap-2">
-            <button onClick={generateRandomGrid} className="flex-1 py-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded text-xs transition-colors flex justify-center gap-1"><Shuffle size={14} /> Acak</button>
-            <button onClick={clearGrid} className="flex-1 py-2 bg-red-950/30 hover:bg-red-900/50 text-red-400 border border-red-900/30 rounded text-xs transition-colors flex justify-center gap-1"><Trash2 size={14} /> Kosongkan</button>
+          <div className="space-y-2">
+            <div className="flex justify-between items-center bg-neutral-950 border border-neutral-800 rounded p-1">
+              <span className="text-[10px] text-neutral-500 pl-2">Pola Instan:</span>
+              <select onChange={(e) => { if(e.target.value) applySmartLayout(e.target.value); e.target.value=''; }} className="bg-neutral-800 text-teal-400 text-[10px] rounded px-2 py-1 outline-none border border-neutral-700 cursor-pointer">
+                <option value="">-- Pilih Pola --</option>
+                <option value="checker">Papan Catur</option>
+                <option value="border">Bingkai Luar</option>
+                <option value="center">Blok Tengah</option>
+                <option value="diagonal">Silang (X)</option>
+              </select>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={generateRandomGrid} className="flex-1 py-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded text-xs transition-colors flex justify-center gap-1"><Shuffle size={14} /> Acak Chaos</button>
+              <button onClick={clearGrid} className="flex-1 py-2 bg-red-950/30 hover:bg-red-900/50 text-red-400 border border-red-900/30 rounded text-xs transition-colors flex justify-center gap-1"><Trash2 size={14} /> Kosongkan</button>
+            </div>
           </div>
         </div>
 
