@@ -15,6 +15,14 @@ const PATTERNS = {
   'solid-black': { background: '#0a0a0a' }
 };
 
+const RESOLUTIONS = {
+  'Auto (Match Image)': { w: 0, h: 0 },
+  'Instagram Story (1080x1920)': { w: 1080, h: 1920 },
+  'Instagram Post (1080x1080)': { w: 1080, h: 1080 },
+  'Poster A4 (1240x1754)': { w: 1240, h: 1754 },
+  'Full HD (1920x1080)': { w: 1920, h: 1080 }
+};
+
 const generatePuzzlePath = (calcW, calcH, col, row, spanX, spanY, baseTabSize) => {
   const getTabDir = (x, y, edge) => {
     let seedX = x; let seedY = y;
@@ -85,6 +93,7 @@ export default function App() {
   const [layerColors, setLayerColors] = useState({ fg1: '#0ea5e9', fg2: '#ec4899' }); 
 
   const [canvasSize, setCanvasSize] = useState({ w: 550, h: 687 });
+  const [canvasResolution, setCanvasResolution] = useState('Custom');
   const [canvasBgColor, setCanvasBgColor] = useState('#000000');
 
   const [gridCols, setGridCols] = useState(15);
@@ -971,14 +980,33 @@ export default function App() {
         {/* KANVAS & LATAR BELAKANG */}
         <div>
           <h3 className="text-neutral-400 font-bold mb-3 text-[11px] tracking-wider flex items-center gap-1"><Square size={14} /> UKURAN KANVAS & LATAR</h3>
+          
+          <div className="mb-3 flex flex-col gap-1">
+            <label className="text-[10px] text-neutral-500">Preset Ukuran (Resolusi)</label>
+            <select 
+              value={canvasResolution} 
+              onChange={(e) => {
+                const res = e.target.value;
+                setCanvasResolution(res);
+                if (res !== 'Auto (Match Image)' && res !== 'Custom' && RESOLUTIONS[res]) {
+                  setCanvasSize({ w: RESOLUTIONS[res].w, h: RESOLUTIONS[res].h });
+                }
+              }} 
+              className="bg-neutral-950 text-white text-[11px] font-bold rounded p-2 outline-none border border-neutral-800 focus:border-teal-500 cursor-pointer"
+            >
+              {Object.keys(RESOLUTIONS).map(res => <option key={res} value={res}>{res}</option>)}
+              <option value="Custom">Custom Ukuran Manual</option>
+            </select>
+          </div>
+
           <div className="grid grid-cols-2 gap-3 mb-3">
             <div className="flex flex-col gap-1">
               <label className="text-[10px] text-neutral-500">Lebar (W)</label>
-              <input type="number" value={canvasSize.w} onChange={(e) => setCanvasSize(p => ({...p, w: Number(e.target.value)}))} className="bg-neutral-950 text-white text-xs rounded p-2 outline-none border border-neutral-800" />
+              <input type="number" value={canvasSize.w} onChange={(e) => { setCanvasSize(p => ({...p, w: Number(e.target.value)})); setCanvasResolution('Custom'); }} className="bg-neutral-950 text-white text-xs rounded p-2 outline-none border border-neutral-800 focus:border-teal-500" />
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-[10px] text-neutral-500">Tinggi (H)</label>
-              <input type="number" value={canvasSize.h} onChange={(e) => setCanvasSize(p => ({...p, h: Number(e.target.value)}))} className="bg-neutral-950 text-white text-xs rounded p-2 outline-none border border-neutral-800" />
+              <input type="number" value={canvasSize.h} onChange={(e) => { setCanvasSize(p => ({...p, h: Number(e.target.value)})); setCanvasResolution('Custom'); }} className="bg-neutral-950 text-white text-xs rounded p-2 outline-none border border-neutral-800 focus:border-teal-500" />
             </div>
           </div>
           <div className="flex items-center justify-between bg-neutral-950 p-2 rounded border border-neutral-800">
