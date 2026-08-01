@@ -89,19 +89,25 @@ export default function App() {
 
   const [gridCols, setGridCols] = useState(15);
   const [gridRows, setGridRows] = useState(18);
-  const [gridGap, setGridGap] = useState(0); 
+  
+  // STRIKE 1: STATE INDEPENDEN UNTUK STYLING LAYER
+  const [layerStyles, setLayerStyles] = useState({ fg1: { gap: 0, border: 0, shadow: false }, fg2: { gap: 0, border: 0, shadow: false } });
   const [brushSpan, setBrushSpan] = useState({ x: 1, y: 1 }); 
   const [brushTemplate, setBrushTemplate] = useState(null); 
-  const [borderWidth, setBorderWidth] = useState(0); 
-  const [enableShadow, setEnableShadow] = useState(false);
+
+  // Helper pengukur dinamis per-layer
+  const getMetrics = (lId) => {
+    const gap = layerStyles[lId]?.gap || 0;
+    return { gap, cw: (canvasSize.w - ((gridCols - 1) * gap)) / gridCols, ch: (canvasSize.h - ((gridRows - 1) * gap)) / gridRows };
+  };
   
   const [activeCells, setActiveCells] = useState({});
   const [selectedCellKey, setSelectedCellKey] = useState(null);
 
   const [transforms, setTransforms] = useState({
     bg: { x: 0, y: 0, scale: 1, rotate: 0 },
-    fg1: { x: 0, y: 0, scale: 1, rotate: 0 },
-    fg2: { x: 0, y: 0, scale: 1, rotate: 0 },
+    fg1: { x: 0, y: 0, scale: 1, rotate: 0 }, 
+    fg2: { x: 0, y: 0, scale: 1, rotate: 0 }, 
     canvas: { x: 0, y: 0, scale: 1 }
   });
   
@@ -134,8 +140,11 @@ export default function App() {
   const isDragging = useRef(false);
   const lastMousePos = useRef({ x: 0, y: 0 });
 
-  const cellWidth = (canvasSize.w - ((gridCols - 1) * gridGap)) / gridCols;
-  const cellHeight = (canvasSize.h - ((gridRows - 1) * gridGap)) / gridRows;
+  // STRIKE 2: KOORDINAT MOUSE DINAMIS MENGGUNAKAN METRIK LAYER AKTIF
+  const mActive = getMetrics(activeLayer === 'canvas' || activeLayer === 'bg' ? 'fg1' : activeLayer);
+  const cellWidth = mActive.cw;
+  const cellHeight = mActive.ch;
+  const gridGap = mActive.gap;
 
   // --- LAYER LOGIC FUNCTIONS ---
   const addNewLayer = () => {
@@ -144,11 +153,24 @@ export default function App() {
     setLayerModes(prev => ({ ...prev, [newId]: 'solid' }));
     setLayerShapes(prev => ({ ...prev, [newId]: 'puzzle' }));
     setLayerPatterns(prev => ({ ...prev, [newId]: 'solid-white' }));
+    
+    // STRIKE 3: UPDATE FUNGSI TAMBAH LAYER
     setLayerColors(prev => ({ ...prev, [newId]: '#0ea5e9' }));
+    setLayerStyles(prev => ({ ...prev, [newId]: { gap: 0, border: 0, shadow: false } }));
     setTransforms(prev => ({ ...prev, [newId]: { x: 0, y: 0, scale: 1, rotate: 0 } }));
     setLayerEffects(prev => ({ ...prev, [newId]: { ...initialEffects } }));
     setLayerOffsets(prev => ({ ...prev, [newId]: { x: 0, y: 0 } }));
     setActiveLayer(newId);
+  };
+
+  const updateActiveLayerStyle = (key, value) => {
+    if (activeLayer === 'canvas' || activeLayer === 'bg') return;
+    setLayerStyles(prev => ({ ...prev, [activeLayer]: { ...prev[activeLayer], [key]: value } }));
+  };
+
+  const updateActiveLayerTransform = (key, value) => {
+    if (activeLayer === 'canvas') return;
+    setTransforms(prev => ({ ...prev, [activeLayer]: { ...prev[activeLayer], [key]: value } }));
   };
 
   const deleteLayer = (id) => {
@@ -757,12 +779,14 @@ export default function App() {
                   const offsetX = layerOffsets[lName]?.x || 0;
                   const offsetY = layerOffsets[lName]?.y || 0;
 
-                  const posX = (cellData.customX !== undefined ? cellData.customX : cellData.col * (cellWidth + gridGap)) + offsetX;
-                  const posY = (cellData.customY !== undefined ? cellData.customY : cellData.row * (cellHeight + gridGap)) + offsetY;
-                  const calcW = Math.max(1, cellData.customW !== undefined ? cellData.customW : (cellData.spanX * cellWidth + (cellData.spanX - 1) * gridGap));
-                  const calcH = Math.max(1, cellData.customH !== undefined ? cellData.customH : (cellData.spanY * cellHeight + (cellData.spanY - 1) * gridGap));
+                  // STRIKE 4: RENDER LOOP MENGGUNAKAN METRIK PER-LAYER
+                  const m = getMetrics(lName);
+                  const posX = (cellData.customX !== undefined ? cellData.customX : cellData.col * (m.cw + m.gap)) + offsetX;
+                  const posY = (cellData.customY !== undefined ? cellData.customY : cellData.row * (m.ch + m.gap)) + offsetY;
+                  const calcW = Math.max(1, cellData.customW !== undefined ? cellData.customW : (cellData.spanX * m.cw + (cellData.spanX - 1) * m.gap));
+                  const calcH = Math.max(1, cellData.customH !== undefined ? cellData.customH : (cellData.spanY * m.ch + (cellData.spanY - 1) * m.gap));
                   
-                  const baseTabSize = isPuzzle ? Math.min(cellWidth, cellHeight) * 0.25 : 0; 
+                  const baseTabSize = isPuzzle ? Math.min(m.cw, m.ch) * 0.25 : 0; 
                   
                   const renderX = posX - baseTabSize;
                   const renderY = posY - baseTabSize;
@@ -772,7 +796,6 @@ export default function App() {
                   const puzzlePath = isPuzzle ? generatePuzzlePath(calcW, calcH, cellData.col, cellData.row, cellData.spanX, cellData.spanY, baseTabSize) : '';
                   const puzzleSvgUrl = isPuzzle ? `url("data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${renderW} ${renderH}'><path d='${puzzlePath}' fill='black'/></svg>`)}")` : 'none';
 
-                  // Menghilangkan offset dari masking gambar agar gambar bergerak BERSAMA dengan cetakan
                   const originalRenderX = renderX - offsetX;
                   const originalRenderY = renderY - offsetY;
 
@@ -785,18 +808,18 @@ export default function App() {
                       `}
                       style={{ 
                         left: renderX, top: renderY, width: renderW, height: renderH,
-                        border: !isPuzzle && borderWidth > 0 ? `${borderWidth}px solid rgba(255, 255, 255, 0.85)` : 'none',
+                        border: !isPuzzle && layerStyles[lName]?.border > 0 ? `${layerStyles[lName].border}px solid rgba(255, 255, 255, 0.85)` : 'none',
                         mixBlendMode: activeBlendMode,
                         WebkitMaskImage: puzzleSvgUrl, maskImage: puzzleSvgUrl,
                         WebkitMaskSize: '100% 100%', maskSize: '100% 100%',
                         WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
-                        filter: enableShadow ? (isPuzzle ? 'drop-shadow(0px 4px 10px rgba(0,0,0,0.8))' : undefined) : undefined,
-                        boxShadow: enableShadow && !isPuzzle ? '0 4px 15px rgba(0,0,0,0.9)' : 'none'
+                        filter: layerStyles[lName]?.shadow ? (isPuzzle ? 'drop-shadow(0px 4px 10px rgba(0,0,0,0.8))' : undefined) : undefined,
+                        boxShadow: layerStyles[lName]?.shadow && !isPuzzle ? '0 4px 15px rgba(0,0,0,0.9)' : 'none'
                       }}
                     >
-                      {isPuzzle && borderWidth > 0 && (
+                      {isPuzzle && layerStyles[lName]?.border > 0 && (
                         <svg className="absolute inset-0 pointer-events-none z-50" width="100%" height="100%" viewBox={`0 0 ${renderW} ${renderH}`}>
-                          <path d={puzzlePath} fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth={borderWidth * 2} />
+                          <path d={puzzlePath} fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth={layerStyles[lName].border * 2} />
                         </svg>
                       )}
 
@@ -804,8 +827,8 @@ export default function App() {
                         className="absolute pointer-events-none transition-opacity duration-200"
                         style={{
                           width: canvasSize.w, height: canvasSize.h,
-                          left: -originalRenderX - (!isPuzzle ? borderWidth : 0), 
-                          top: -originalRenderY - (!isPuzzle ? borderWidth : 0),
+                          left: -originalRenderX - (!isPuzzle ? (layerStyles[lName]?.border || 0) : 0), 
+                          top: -originalRenderY - (!isPuzzle ? (layerStyles[lName]?.border || 0) : 0),
                           filter: activeFilter,
                           opacity: isSelected ? 0.75 : 1 
                         }}
@@ -915,6 +938,36 @@ export default function App() {
           </div>
         </div>
 
+        {/* MENU KLONING SIMPLE & BERSIH (Pindah ke Sini) */}
+        {activeSelectedCell && (
+          <div className="bg-teal-950/30 p-3 mb-4 rounded-lg border border-teal-500/50 shadow-[0_0_10px_rgba(45,212,191,0.1)] mt-4">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 bg-teal-400 rounded-full animate-pulse"></span>
+                <span className="text-teal-400 font-bold text-[11px] tracking-wider">KOTAK TERPILIH</span>
+              </div>
+              <button onClick={() => {
+                setActiveCells(p => { const n = {...p}; delete n[selectedCellKey]; return n; });
+                setSelectedCellKey(null);
+              }} className="text-red-400 hover:text-red-300 text-[10px]"><Trash2 size={14} /></button>
+            </div>
+            
+            <div className="mt-3">
+              <button 
+                onClick={() => {
+                  const w = activeSelectedCell.customW !== undefined ? activeSelectedCell.customW : (activeSelectedCell.spanX * cellWidth + (activeSelectedCell.spanX - 1) * gridGap);
+                  const h = activeSelectedCell.customH !== undefined ? activeSelectedCell.customH : (activeSelectedCell.spanY * cellHeight + (activeSelectedCell.spanY - 1) * gridGap);
+                  setBrushTemplate({w, h});
+                  setActiveTool('draw'); 
+                }} 
+                className="w-full py-2 bg-teal-600 hover:bg-teal-500 text-white rounded text-xs font-bold flex justify-center items-center gap-2 transition-colors shadow-sm"
+              >
+                <Copy size={14} /> Salin Jadikan Template Kuas
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* KANVAS & LATAR BELAKANG */}
         <div>
           <h3 className="text-neutral-400 font-bold mb-3 text-[11px] tracking-wider flex items-center gap-1"><Square size={14} /> UKURAN KANVAS & LATAR</h3>
@@ -939,7 +992,8 @@ export default function App() {
         {/* PENGATURAN ISI LAYER DINAMIS (GAMBAR/POLA/WARNA) */}
         {activeLayer !== 'canvas' && (
           <div>
-            <h3 className="text-teal-400 font-bold mb-3 text-[11px] tracking-wider uppercase">KONTEN LAYER {activeLayer === 'bg' ? 'LATAR BELAKANG' : activeLayer.toUpperCase()}</h3>
+            {/* STRIKE 5: UPDATE NAMA LAYER DI HEADER */}
+            <h3 className="text-teal-400 font-bold mb-3 text-[11px] tracking-wider uppercase">KONTEN LAYER {activeLayer === 'bg' ? 'LATAR BELAKANG' : layers.find(l => l.id === activeLayer)?.name.toUpperCase()}</h3>
             
             {activeLayer === 'bg' ? (
               <div className="bg-neutral-950 p-2 rounded border border-neutral-800 border-l-2 border-l-white">
@@ -947,7 +1001,6 @@ export default function App() {
               </div>
             ) : (
               <div className="bg-neutral-950 p-2 rounded border border-neutral-800 border-l-2 border-l-teal-500">
-                 {/* Shape selector */}
                  <div className="flex justify-between items-center mb-3">
                   <label className="text-[9px] text-neutral-400 flex items-center gap-1"><Puzzle size={10} /> Bentuk Potongan</label>
                   <select value={layerShapes[activeLayer] || 'rect'} onChange={(e) => setLayerShapes(p => ({...p, [activeLayer]: e.target.value}))} className="bg-neutral-800 text-[9px] text-white rounded px-1 outline-none border border-neutral-700">
@@ -955,7 +1008,6 @@ export default function App() {
                     <option value="puzzle">Jigsaw Puzzle</option>
                   </select>
                 </div>
-                {/* Mode selector */}
                  <div className="flex justify-between items-center mb-2">
                   <label className="text-[10px] font-bold text-teal-500">Isi Layer</label>
                   <select value={layerModes[activeLayer] || 'image'} onChange={(e) => setLayerModes(p => ({...p, [activeLayer]: e.target.value}))} className="bg-neutral-800 text-[9px] text-white rounded px-1 outline-none border border-neutral-700">
@@ -964,7 +1016,6 @@ export default function App() {
                     <option value="solid">Warna Solid</option>
                   </select>
                 </div>
-                {/* Inputs based on Mode */}
                 {layerModes[activeLayer] === 'image' || !layerModes[activeLayer] ? (
                   <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, activeLayer)} className="w-full text-[10px] text-neutral-400 cursor-pointer file:bg-neutral-800 file:text-teal-400 file:border-0 file:rounded file:px-2 file:mr-2" />
                 ) : layerModes[activeLayer] === 'pattern' ? (
@@ -977,8 +1028,80 @@ export default function App() {
                      <input type="color" value={layerColors[activeLayer] || '#0ea5e9'} onChange={(e) => setLayerColors(p => ({...p, [activeLayer]: e.target.value}))} className="w-6 h-6 rounded cursor-pointer border-none p-0 bg-transparent" />
                   </div>
                 )}
+                
+                {/* STRIKE 5: PINDAHKAN UI SLIDER KE DALAM KONTEN LAYER */}
+                <div className="mt-4 pt-3 border-t border-neutral-800 space-y-3">
+                  <h4 className="text-[10px] text-teal-400 font-bold uppercase">Styling & Transformasi Mandiri</h4>
+                  <FilterSlider label="Celah (Gap)" max={40} min={0} onChange={(v) => updateActiveLayerStyle('gap', v)} value={layerStyles[activeLayer]?.gap || 0} />
+                  <FilterSlider label="Ketebalan Batas" max={5} min={0} onChange={(v) => updateActiveLayerStyle('border', v)} value={layerStyles[activeLayer]?.border || 0} />
+                  <div className="flex items-center justify-between bg-neutral-800/40 p-2 rounded border border-neutral-800/50">
+                    <span className="text-[10px] text-neutral-400">Bayangan (Shadow)</span>
+                    <button onClick={() => updateActiveLayerStyle('shadow', !layerStyles[activeLayer]?.shadow)} className={`w-8 h-4 rounded-full relative transition-colors duration-300 ${layerStyles[activeLayer]?.shadow ? 'bg-teal-500' : 'bg-neutral-700'}`}>
+                      <div className={`absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-white shadow-sm transition-all duration-300 ${layerStyles[activeLayer]?.shadow ? 'left-5' : 'left-1'}`} />
+                    </button>
+                  </div>
+                  <FilterSlider label="Skala / Zoom (x)" max={5} min={0.1} step={0.05} onChange={(val) => updateActiveLayerTransform('scale', val)} value={transforms[activeLayer]?.scale || 1} />
+                  <FilterSlider label="Posisi Horizontal (X)" max={1000} min={-1000} step={1} onChange={(val) => updateActiveLayerTransform('x', val)} value={transforms[activeLayer]?.x || 0} />
+                  <FilterSlider label="Posisi Vertikal (Y)" max={1000} min={-1000} step={1} onChange={(val) => updateActiveLayerTransform('y', val)} value={transforms[activeLayer]?.y || 0} />
+                </div>
               </div>
             )}
+          </div>
+        )}
+
+        <div className="h-px bg-neutral-800"></div>
+
+        {/* EFEK & FILTER (Dinamic by Layer) */}
+        {activeLayer !== 'canvas' ? (
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <h3 className="text-teal-400 font-bold text-[11px] tracking-wider uppercase">EFEK VISUAL {activeLayer === 'bg' ? 'LATAR BELAKANG' : activeLayer}</h3>
+            </div>
+
+            <div className="flex flex-col gap-1 mb-4">
+              <label className="text-[11px] text-neutral-500">Blend Mode (Pencampuran)</label>
+              <select 
+                value={layerEffects[activeLayer]?.blendMode || 'normal'} 
+                onChange={(e) => updateActiveLayerEffect('blendMode', e.target.value)} 
+                className="bg-neutral-950 border border-neutral-800 text-white text-xs rounded p-2 outline-none focus:border-teal-500"
+              >
+                <option value="normal">Normal</option>
+                <option value="multiply">Multiply (Gelap)</option>
+                <option value="screen">Screen (Terang)</option>
+                <option value="overlay">Overlay (Kontras)</option>
+                <option value="color-dodge">Color Dodge (Neon Glow)</option>
+                <option value="difference">Difference (Invert)</option>
+              </select>
+            </div>
+
+            <div className="mb-4 bg-neutral-800/30 p-3 rounded-lg border border-neutral-800">
+              <FilterSlider label="Rotasi Gambar (°)" max={180} min={-180} onChange={(val) => updateActiveLayerTransform('rotate', val)} value={transforms[activeLayer]?.rotate || 0} />
+            </div>
+            <div className="space-y-4">
+              <div className="flex flex-col gap-1">
+                <label className="text-[11px] text-neutral-500">Tema Spesial</label>
+                <select value={layerEffects[activeLayer]?.specialEffect || 'none'} onChange={(e) => updateActiveLayerEffect('specialEffect', e.target.value)} className="bg-neutral-950 border border-neutral-800 text-white text-xs rounded p-2 outline-none focus:border-teal-500">
+                  <option value="none">Normal</option>
+                  <option value="cyberpunk">Cyberpunk (Neon)</option>
+                  <option value="matrix">The Matrix (Hijau)</option>
+                  <option value="sepia">Vintage (Sepia)</option>
+                  <option value="negative">Invert Negatif</option>
+                  <option value="xray">X-Ray Scanner</option>
+                  <option value="dither">Dither Kasar</option>
+                  <option value="acid-trip">Acid Trip (Psychedelic)</option>
+                  <option value="thermal">Thermal (Sensor Panas)</option>
+                  <option value="noir">Noir (B&W Kontras)</option>
+                </select>
+              </div>
+              <FilterSlider label="Kecerahan" max={200} min={0} onChange={(val) => updateActiveLayerEffect('brightness', val)} value={layerEffects[activeLayer]?.brightness || 100} />
+              <FilterSlider label="Kontras" max={200} min={0} onChange={(val) => updateActiveLayerEffect('contrast', val)} value={layerEffects[activeLayer]?.contrast || 100} />
+              <FilterSlider label="Saturasi" max={300} min={0} onChange={(val) => updateActiveLayerEffect('saturation', val)} value={layerEffects[activeLayer]?.saturation || 100} />
+            </div>
+          </div>
+        ) : (
+          <div className="text-center p-4 bg-neutral-800/30 rounded-lg border border-neutral-800">
+            <Info className="mx-auto text-neutral-500 mb-2" size={20} />
+            <p className="text-[11px] text-neutral-400">Efek dinonaktifkan.<br/>Ubah "Target Operasi" ke salah satu layer untuk mengubah warna/rotasi.</p>
           </div>
         )}
 
@@ -1022,36 +1145,6 @@ export default function App() {
             PENGATURAN GRID & KUAS
           </h3>
 
-          {/* MENU KLONING SIMPLE & BERSIH (Pindah ke Sini) */}
-          {activeSelectedCell && (
-            <div className="bg-teal-950/30 p-3 mb-4 rounded-lg border border-teal-500/50 shadow-[0_0_10px_rgba(45,212,191,0.1)]">
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 bg-teal-400 rounded-full animate-pulse"></span>
-                  <span className="text-teal-400 font-bold text-[11px] tracking-wider">KOTAK TERPILIH</span>
-                </div>
-                <button onClick={() => {
-                  setActiveCells(p => { const n = {...p}; delete n[selectedCellKey]; return n; });
-                  setSelectedCellKey(null);
-                }} className="text-red-400 hover:text-red-300 text-[10px]"><Trash2 size={14} /></button>
-              </div>
-              
-              <div className="mt-3">
-                <button 
-                  onClick={() => {
-                    const w = activeSelectedCell.customW !== undefined ? activeSelectedCell.customW : (activeSelectedCell.spanX * cellWidth + (activeSelectedCell.spanX - 1) * gridGap);
-                    const h = activeSelectedCell.customH !== undefined ? activeSelectedCell.customH : (activeSelectedCell.spanY * cellHeight + (activeSelectedCell.spanY - 1) * gridGap);
-                    setBrushTemplate({w, h});
-                    setActiveTool('draw'); 
-                  }} 
-                  className="w-full py-2 bg-teal-600 hover:bg-teal-500 text-white rounded text-xs font-bold flex justify-center items-center gap-2 transition-colors shadow-sm"
-                >
-                  <Copy size={14} /> Salin Jadikan Template Kuas
-                </button>
-              </div>
-            </div>
-          )}
-
           <div className="mb-4 bg-cyan-950/20 p-3 rounded-lg border border-cyan-900/30">
             <h4 className="text-[10px] text-cyan-400 font-bold mb-2 flex items-center gap-1"><PenTool size={12} /> ALAT KUAS (DRAW)</h4>
             
@@ -1073,17 +1166,6 @@ export default function App() {
                 <FilterSlider label="Tinggi Kotak Standar (Y)" max={15} min={1} onChange={(v) => setBrushSpan(p => ({...p, y: v}))} value={brushSpan.y} />
               </>
             )}
-          </div>
-
-          <div className="space-y-4 mb-4">
-            <FilterSlider label="Celah Antar Kotak (Gap)" max={40} min={0} onChange={setGridGap} value={gridGap} />
-            <FilterSlider label="Ketebalan Garis Batas" max={5} min={0} onChange={setBorderWidth} value={borderWidth} />
-            <div className="flex items-center justify-between bg-neutral-800/40 p-2 rounded border border-neutral-800/50">
-              <span className="text-[11px] text-neutral-400">Bayangan Kotak (Shadow)</span>
-              <button onClick={() => setEnableShadow(!enableShadow)} className={`w-9 h-5 rounded-full relative transition-colors duration-300 ${enableShadow ? 'bg-teal-500' : 'bg-neutral-700'}`}>
-                <div className={`absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-all duration-300 ${enableShadow ? 'left-5' : 'left-1'}`} />
-              </button>
-            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3 mb-3">
@@ -1114,61 +1196,6 @@ export default function App() {
           </div>
         </div>
 
-        <div className="h-px bg-neutral-800"></div>
-
-        {/* EFEK & FILTER (Dinamic by Layer) */}
-        {activeLayer !== 'canvas' ? (
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <h3 className="text-teal-400 font-bold text-[11px] tracking-wider uppercase">EFEK VISUAL {activeLayer === 'bg' ? 'LATAR BELAKANG' : activeLayer}</h3>
-            </div>
-
-            <div className="flex flex-col gap-1 mb-4">
-              <label className="text-[11px] text-neutral-500">Blend Mode (Pencampuran)</label>
-              <select 
-                value={layerEffects[activeLayer]?.blendMode || 'normal'} 
-                onChange={(e) => updateActiveLayerEffect('blendMode', e.target.value)} 
-                className="bg-neutral-950 border border-neutral-800 text-white text-xs rounded p-2 outline-none focus:border-teal-500"
-              >
-                <option value="normal">Normal</option>
-                <option value="multiply">Multiply (Gelap)</option>
-                <option value="screen">Screen (Terang)</option>
-                <option value="overlay">Overlay (Kontras)</option>
-                <option value="color-dodge">Color Dodge (Neon Glow)</option>
-                <option value="difference">Difference (Invert)</option>
-              </select>
-            </div>
-
-            <div className="mb-4 bg-neutral-800/30 p-3 rounded-lg border border-neutral-800">
-              <FilterSlider label="Rotasi Gambar (°)" max={180} min={-180} onChange={(val) => setTransforms(prev => ({...prev, [activeLayer]: {...prev[activeLayer], rotate: val}}))} value={transforms[activeLayer]?.rotate || 0} />
-            </div>
-            <div className="space-y-4">
-              <div className="flex flex-col gap-1">
-                <label className="text-[11px] text-neutral-500">Tema Spesial</label>
-                <select value={layerEffects[activeLayer]?.specialEffect || 'none'} onChange={(e) => updateActiveLayerEffect('specialEffect', e.target.value)} className="bg-neutral-950 border border-neutral-800 text-white text-xs rounded p-2 outline-none focus:border-teal-500">
-                  <option value="none">Normal</option>
-                  <option value="cyberpunk">Cyberpunk (Neon)</option>
-                  <option value="matrix">The Matrix (Hijau)</option>
-                  <option value="sepia">Vintage (Sepia)</option>
-                  <option value="negative">Invert Negatif</option>
-                  <option value="xray">X-Ray Scanner</option>
-                  <option value="dither">Dither Kasar</option>
-                  <option value="acid-trip">Acid Trip (Psychedelic)</option>
-                  <option value="thermal">Thermal (Sensor Panas)</option>
-                  <option value="noir">Noir (B&W Kontras)</option>
-                </select>
-              </div>
-              <FilterSlider label="Kecerahan" max={200} min={0} onChange={(val) => updateActiveLayerEffect('brightness', val)} value={layerEffects[activeLayer]?.brightness || 100} />
-              <FilterSlider label="Kontras" max={200} min={0} onChange={(val) => updateActiveLayerEffect('contrast', val)} value={layerEffects[activeLayer]?.contrast || 100} />
-              <FilterSlider label="Saturasi" max={300} min={0} onChange={(val) => updateActiveLayerEffect('saturation', val)} value={layerEffects[activeLayer]?.saturation || 100} />
-            </div>
-          </div>
-        ) : (
-          <div className="text-center p-4 bg-neutral-800/30 rounded-lg border border-neutral-800">
-            <Info className="mx-auto text-neutral-500 mb-2" size={20} />
-            <p className="text-[11px] text-neutral-400">Efek dinonaktifkan.<br/>Ubah "Target Operasi" ke salah satu layer untuk mengubah warna/rotasi.</p>
-          </div>
-        )}
       </div>
       
       <style>{`
@@ -1194,14 +1221,14 @@ function ToolButton({ icon, active, onClick, tooltip }) {
   );
 }
 
-function FilterSlider({ label, value, min, max, onChange }) {
+function FilterSlider({ label, value, min, max, step = 1, onChange }) {
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex justify-between items-center text-[10px]">
         <label className="text-neutral-400">{label}</label>
         <span className="text-teal-400 font-mono">{value}</span>
       </div>
-      <input type="range" min={min} max={max} value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-full h-1 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-teal-500" />
+      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-full h-1 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-teal-500" />
     </div>
   );
 }
